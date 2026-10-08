@@ -5,6 +5,7 @@ extern rt_start, rt_size, rt_offsets
 extern x64_text_base, x64_op_disp, x64_bytes, x64_imm8, x64_imm16, x64_imm32
 extern x64_call_rel, x64_text_offset
 extern pe_layout, pe_finish
+extern pool_compact
 extern pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image
 
 %define RT_FN_WRITE      0
@@ -23,6 +24,10 @@ alignb 4
 cg_line resd 1
 cg_target resd 1
 cg_depth resd 1
+
+alignb 8
+cg_otab   resq 1
+cg_omask  resq 1
 
 section .text
 
@@ -45,6 +50,7 @@ section .text
 %endmacro
 
 FUNC codegen
+    call pool_compact
     call pe_layout
     mov rdi, [g_image]
     add rdi, [pe_text_file]
@@ -52,6 +58,9 @@ FUNC codegen
     lea rsi, [rt_start]
     mov ecx, [rt_size]
     rep movsb
+    mov rbx, [pe_R]
+    sub rbx, [pe_D]
+    call outline_pass
 .pad:
     call x64_text_offset
     test eax, 15
@@ -210,55 +219,20 @@ FUNC codegen
     jmp .next
 
 .out:
-    mov r14d, [r12 + S_PIECES]
-    mov r15d, [r12 + S_NPIECES]
-    add r15d, r14d
-.piece:
-    cmp r14d, r15d
-    jae .next
-    mov esi, r14d
-    shl rsi, 4
-    add rsi, [g_pieces]
-    inc r14d
-    mov eax, [rsi + P_KIND]
-    cmp eax, PK_TEXT
-    jne .piece_var
-    cmp dword [rsi + P_B], 0
-    je .piece
-    mov eax, [rsi + P_A]
-    lea ecx, [ebx + eax]
-    OPD 0x8F8D49, 3, ecx
-    BYTES 0xBA, 1
-    mov edx, [rsi + P_B]
-    call x64_imm32
-    CALL_RT RT_FN_WRITE
-    jmp .piece
-.piece_var:
-    cmp eax, PK_EXPR
-    jne .piece_plain
-    mov ecx, [rsi + P_A]
-    call emit_expr
-    BYTES 0xC189, 2
-    CALL_RT RT_FN_WRITE_INT
-    jmp .piece
-.piece_plain:
-    mov ecx, [rsi + P_A]
-    add ecx, RT_VARS
-    cmp eax, PK_INT
-    jne .piece_not_int
-    OPD 0x8F8B41, 3, ecx
-    CALL_RT RT_FN_WRITE_INT
-    jmp .piece
-.piece_not_int:
-    cmp eax, PK_BOOL
-    jne .piece_str
-    OPD 0x8FB60F41, 4, ecx
-    CALL_RT RT_FN_WRITE_BOOL
-    jmp .piece
-.piece_str:
-    OPD 0x8F8D49, 3, ecx
-    CALL_RT RT_FN_WRITE_STR
-    jmp .piece
+    mov eax, [r12 + S_VAR]
+    test eax, eax
+    jz .out_inline
+    dec eax
+    shl rax, 5
+    add rax, [cg_otab]
+    cmp dword [rax + 16], 2
+    jb .out_inline
+    mov ecx, [rax + 20]
+    call x64_call_rel
+    jmp .next
+.out_inline:
+    call emit_out_body
+    jmp .next
 
 .next:
     add r12, S_SIZE
@@ -634,4 +608,195 @@ checked_div:
     BYTES 0x05EBC031, 4
     BYTES 0xF9F799, 3
     BYTES 0xD089, 2
+    ret
+
+emit_out_body:
+    push r14
+    push r15
+    push rsi
+    mov r14d, [r12 + S_PIECES]
+    mov r15d, [r12 + S_NPIECES]
+    add r15d, r14d
+.bpiece:
+    cmp r14d, r15d
+    jae .body_done
+    mov esi, r14d
+    shl rsi, 4
+    add rsi, [g_pieces]
+    inc r14d
+    mov eax, [rsi + P_KIND]
+    cmp eax, PK_TEXT
+    jne .bpiece_var
+    cmp dword [rsi + P_B], 0
+    je .bpiece
+    mov eax, [rsi + P_A]
+    lea ecx, [ebx + eax]
+    OPD 0x8F8D49, 3, ecx
+    BYTES 0xBA, 1
+    mov edx, [rsi + P_B]
+    call x64_imm32
+    CALL_RT RT_FN_WRITE
+    jmp .bpiece
+.bpiece_var:
+    cmp eax, PK_EXPR
+    jne .bpiece_plain
+    mov ecx, [rsi + P_A]
+    call emit_expr
+    BYTES 0xC189, 2
+    CALL_RT RT_FN_WRITE_INT
+    jmp .bpiece
+.bpiece_plain:
+    mov ecx, [rsi + P_A]
+    add ecx, RT_VARS
+    cmp eax, PK_INT
+    jne .bpiece_not_int
+    OPD 0x8F8B41, 3, ecx
+    CALL_RT RT_FN_WRITE_INT
+    jmp .bpiece
+.bpiece_not_int:
+    cmp eax, PK_BOOL
+    jne .bpiece_str
+    OPD 0x8FB60F41, 4, ecx
+    CALL_RT RT_FN_WRITE_BOOL
+    jmp .bpiece
+.bpiece_str:
+    OPD 0x8F8D49, 3, ecx
+    CALL_RT RT_FN_WRITE_STR
+    jmp .bpiece
+.body_done:
+    pop rsi
+    pop r15
+    pop r14
+    ret
+
+
+outline_pass:
+    mov rcx, [g_nstmt]
+    inc rcx
+    shl rcx, 1
+    mov eax, 16
+.cap:
+    cmp rax, rcx
+    jae .cap_ok
+    shl rax, 1
+    jmp .cap
+.cap_ok:
+    lea rdx, [rax - 1]
+    mov [cg_omask], rdx
+    shl rax, 5
+    mov rcx, rax
+    push rdi
+    call mem_alloc
+    pop rdi
+    mov [cg_otab], rax
+
+    mov r12, [g_stmts]
+    mov r13, [g_nstmt]
+    shl r13, 5
+    add r13, r12
+.scan:
+    cmp r12, r13
+    jae .emit
+    cmp word [r12 + S_KIND], SK_OUT
+    jne .scan_next
+    mov dword [r12 + S_VAR], 0
+    mov ecx, [r12 + S_NPIECES]
+    test ecx, ecx
+    jz .scan_next
+    mov esi, [r12 + S_PIECES]
+    shl rsi, 4
+    add rsi, [g_pieces]
+    mov r14d, ecx
+    shl r14, 4
+    xor ecx, ecx
+.kinds:
+    cmp rcx, r14
+    jae .kinds_ok
+    cmp dword [rsi + rcx + P_KIND], PK_EXPR
+    je .scan_next
+    add rcx, P_SIZE
+    jmp .kinds
+.kinds_ok:
+    mov rax, 0xcbf29ce484222325
+    mov r9, 0x100000001b3
+    xor ecx, ecx
+.hash:
+    cmp rcx, r14
+    jae .hashed
+    xor rax, [rsi + rcx]
+    imul rax, r9
+    add rcx, 8
+    jmp .hash
+.hashed:
+    mov r10, rax
+    mov r11, rax
+    and r11, [cg_omask]
+.probe:
+    mov r15, r11
+    shl r15, 5
+    add r15, [cg_otab]
+    cmp qword [r15 + 8], 0
+    je .insert
+    cmp [r15], r10
+    jne .probe_next
+    mov eax, [r12 + S_NPIECES]
+    cmp [r15 + 24], eax
+    jne .probe_next
+    mov rax, [r15 + 8]
+    mov eax, [rax + S_PIECES]
+    shl rax, 4
+    add rax, [g_pieces]
+    xor ecx, ecx
+.cmp_loop:
+    cmp rcx, r14
+    jae .cmp_equal
+    mov rdx, [rsi + rcx]
+    cmp rdx, [rax + rcx]
+    jne .probe_next
+    add rcx, 8
+    jmp .cmp_loop
+.cmp_equal:
+    inc dword [r15 + 16]
+    jmp .mark
+.probe_next:
+    inc r11
+    and r11, [cg_omask]
+    jmp .probe
+.insert:
+    mov [r15], r10
+    mov [r15 + 8], r12
+    mov dword [r15 + 16], 1
+    mov eax, [r12 + S_NPIECES]
+    mov [r15 + 24], eax
+.mark:
+    lea eax, [r11d + 1]
+    mov [r12 + S_VAR], eax
+.scan_next:
+    add r12, S_SIZE
+    jmp .scan
+
+.emit:
+    xor r14d, r14d
+    mov r13, [cg_omask]
+    inc r13
+.emit_loop:
+    cmp r14, r13
+    jae .emit_done
+    mov r15, r14
+    shl r15, 5
+    add r15, [cg_otab]
+    cmp qword [r15 + 8], 0
+    je .emit_next
+    cmp dword [r15 + 16], 2
+    jb .emit_next
+    call x64_text_offset
+    mov [r15 + 20], eax
+    BYTES 0x50, 1
+    mov r12, [r15 + 8]
+    call emit_out_body
+    BYTES 0xC359, 2
+.emit_next:
+    inc r14
+    jmp .emit_loop
+.emit_done:
     ret
