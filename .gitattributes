@@ -1,3 +1,6 @@
 *.asm linguist-language=Assembly
 *.inc linguist-language=Assembly
 *.def linguist-detectable=false
+*.sh text eol=lf
+*.asm text eol=lf
+*.inc text eol=lf
