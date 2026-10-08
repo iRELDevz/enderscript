@@ -145,6 +145,33 @@ rt_div_zero:
     mov ecx, 1
     call [r15 + RT_EXIT]
 
+rt_str_eq:
+    test rcx, rcx
+    jz .a_null
+    test r8, r8
+    jz .no
+    cmp rdx, r9
+    jne .no
+    push rsi
+    push rdi
+    mov rsi, rcx
+    mov rdi, r8
+    mov rcx, rdx
+    repe cmpsb
+    pop rdi
+    pop rsi
+    jne .no
+    mov eax, 1
+    ret
+.a_null:
+    test r8, r8
+    jnz .no
+    mov eax, 1
+    ret
+.no:
+    xor eax, eax
+    ret
+
 rt_s_divz db "runtime error: division by zero on line "
 rt_s_divz_len equ $ - rt_s_divz
 rt_s_true  db "true"
@@ -162,3 +189,4 @@ rt_offsets:
     dd rt_write_str - rt_start
     dd rt_flush - rt_start
     dd rt_div_zero - rt_start
+    dd rt_str_eq - rt_start

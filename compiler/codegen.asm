@@ -14,6 +14,7 @@ extern pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image
 %define RT_FN_WRITE_STR  12
 %define RT_FN_FLUSH      16
 %define RT_FN_DIV_ZERO   20
+%define RT_FN_STR_EQ     24
 
 %define IAT_GETSTDHANDLE 72
 %define IAT_WRITEFILE    80
@@ -28,6 +29,13 @@ cg_depth resd 1
 alignb 8
 cg_otab   resq 1
 cg_omask  resq 1
+cg_rdelta resq 1
+cg_patch  resq 1
+cg_npatch resq 1
+cg_bpatch resq 1
+cg_nbody  resq 1
+cg_bdepth resq 1
+cg_bstack resq 2 * (MAX_BLOCKS + 1)
 
 section .text
 
@@ -60,6 +68,22 @@ FUNC codegen
     rep movsb
     mov rbx, [pe_R]
     sub rbx, [pe_D]
+    mov [cg_rdelta], rbx
+    push rdi
+    mov rcx, [g_nparts]
+    add rcx, 16
+    shl rcx, 2
+    call mem_alloc
+    mov [cg_patch], rax
+    mov rcx, [g_nparts]
+    add rcx, 16
+    shl rcx, 2
+    call mem_alloc
+    mov [cg_bpatch], rax
+    pop rdi
+    mov qword [cg_npatch], 0
+    mov qword [cg_nbody], 0
+    mov qword [cg_bdepth], 0
     call outline_pass
 .pad:
     call x64_text_offset
@@ -103,6 +127,10 @@ FUNC codegen
     shl r13, 5
     add r13, r12
 .stmt:
+    mov rax, r12
+    sub rax, [g_stmts]
+    shr rax, 5
+    call close_blocks
     cmp r12, r13
     jae .epilogue
     mov eax, [r12 + S_TOK]
@@ -112,6 +140,8 @@ FUNC codegen
     mov [cg_line], eax
     cmp word [r12 + S_KIND], SK_OUT
     je .out
+    cmp word [r12 + S_KIND], SK_IF
+    je .if
 
     mov eax, [r12 + S_VAR]
     shl rax, 5
@@ -232,6 +262,24 @@ FUNC codegen
     jmp .next
 .out_inline:
     call emit_out_body
+    jmp .next
+
+.if:
+    mov rax, [cg_bdepth]
+    shl rax, 4
+    lea rcx, [cg_bstack]
+    mov edx, [r12 + S_PIECES]
+    mov [rcx + rax], rdx
+    mov rdx, [cg_npatch]
+    mov [rcx + rax + 8], rdx
+    inc qword [cg_bdepth]
+    mov qword [cg_nbody], 0
+    mov eax, [r12 + S_PARTS]
+    mov rdx, [g_roots]
+    mov ecx, [rdx + rax * 4]
+    mov edx, 1
+    call emit_cond
+    call patch_body
     jmp .next
 
 .next:
@@ -799,4 +847,316 @@ outline_pass:
     inc r14
     jmp .emit_loop
 .emit_done:
+    ret
+
+record_patch:
+    call x64_text_offset
+    mov r9, [r8]
+    mov [rcx + r9 * 4], eax
+    inc qword [r8]
+    mov dword [rdi], 0
+    add rdi, 4
+    ret
+
+patch_list:
+    call x64_text_offset
+    mov r8, rax
+.loop:
+    cmp r9, r10
+    jae .done
+    mov edx, [rcx + r9 * 4]
+    mov r11d, r8d
+    sub r11d, edx
+    sub r11d, 4
+    mov rax, [x64_text_base]
+    mov [rax + rdx], r11d
+    inc r9
+    jmp .loop
+.done:
+    ret
+
+patch_body:
+    mov rcx, [cg_bpatch]
+    xor r9d, r9d
+    mov r10, [cg_nbody]
+    call patch_list
+    mov qword [cg_nbody], 0
+    ret
+
+close_blocks:
+    push rbx
+    mov rbx, rax
+.loop:
+    mov rax, [cg_bdepth]
+    test rax, rax
+    jz .done
+    dec rax
+    shl rax, 4
+    lea rcx, [cg_bstack]
+    cmp [rcx + rax], rbx
+    jne .done
+    mov r9, [rcx + rax + 8]
+    mov rcx, [cg_patch]
+    mov r10, [cg_npatch]
+    push r9
+    call patch_list
+    pop r9
+    mov [cg_npatch], r9
+    dec qword [cg_bdepth]
+    jmp .loop
+.done:
+    pop rbx
+    ret
+
+jump_to_end:
+    mov rcx, [cg_patch]
+    lea r8, [cg_npatch]
+    jmp record_patch
+
+jump_to_body:
+    mov rcx, [cg_bpatch]
+    lea r8, [cg_nbody]
+    jmp record_patch
+
+emit_jcc:
+    shl eax, 8
+    or eax, 0x800F
+    push rdx
+    mov r8d, 2
+    call x64_bytes
+    pop rdx
+    test edx, edx
+    jnz jump_to_body
+    jmp jump_to_end
+
+emit_cond:
+    push rsi
+    push rbx
+    mov ebx, edx
+    call node_addr
+    mov rsi, rax
+    movzx eax, byte [rsi + V_KIND]
+    cmp eax, VK_BOOL
+    je .const
+    cmp eax, VK_OR
+    je .or
+    call emit_compare
+    test ebx, ebx
+    jz .to_body
+    xor eax, 1
+    xor edx, edx
+    call emit_jcc
+    jmp .done
+.to_body:
+    mov edx, 1
+    call emit_jcc
+    jmp .done
+.const:
+    cmp qword [rsi + V_DATA], 0
+    jne .const_true
+    test ebx, ebx
+    jz .done
+    BYTES 0xE9, 1
+    call jump_to_end
+    jmp .done
+.const_true:
+    test ebx, ebx
+    jnz .done
+    BYTES 0xE9, 1
+    call jump_to_body
+    jmp .done
+.or:
+    mov ecx, [rsi + V_DATA]
+    xor edx, edx
+    call emit_cond
+    mov ecx, [rsi + V_DATA + 4]
+    mov edx, ebx
+    call emit_cond
+.done:
+    pop rbx
+    pop rsi
+    ret
+
+cc_of_op:
+    mov eax, 4
+    cmp ecx, CMP_IS
+    je .r
+    mov eax, 5
+    cmp ecx, CMP_ISNOT
+    je .r
+    mov eax, 0xC
+    cmp ecx, CMP_LT
+    je .r
+    mov eax, 0xF
+.r:
+    ret
+
+emit_compare:
+    push r12
+    push r13
+    push r14
+    movzx r14d, byte [rsi + V_NEG]
+    mov r12d, [rsi + V_DATA]
+    mov r13d, [rsi + V_DATA + 4]
+    movzx eax, byte [rsi + V_TYPE]
+    cmp eax, TY_STR
+    je .str
+    cmp eax, TY_BOOL
+    je .bool
+    mov ecx, r12d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_INT
+    jne .int_order_ok
+    mov ecx, r13d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_INT
+    je .int_order_ok
+    xchg r12d, r13d
+    cmp r14d, CMP_LT
+    je .mirror_gt
+    cmp r14d, CMP_GT
+    jne .int_order_ok
+    mov r14d, CMP_LT
+    jmp .int_order_ok
+.mirror_gt:
+    mov r14d, CMP_GT
+.int_order_ok:
+    mov ecx, r12d
+    call emit_expr
+    mov ecx, r13d
+    call node_addr
+    movzx edx, byte [rax + V_KIND]
+    cmp edx, VK_INT
+    je .int_imm
+    cmp edx, VK_VAR
+    je .int_mem
+    mov eax, [cg_depth]
+    push rax
+    inc dword [cg_depth]
+    shl eax, 16
+    add eax, 0xC08941
+    mov r8d, 3
+    call x64_bytes
+    mov ecx, r13d
+    call emit_expr
+    pop rax
+    dec dword [cg_depth]
+    shl eax, 16
+    add eax, 0xC03941
+    mov r8d, 3
+    call x64_bytes
+    jmp .int_cc
+.int_imm:
+    mov r9d, [rax + V_DATA]
+    BYTES 0x3D, 1
+    mov edx, r9d
+    call x64_imm32
+    jmp .int_cc
+.int_mem:
+    call var_disp
+    mov r9d, eax
+    OPD 0x873B41, 3, r9d
+.int_cc:
+    mov ecx, r14d
+    call cc_of_op
+    jmp .ret
+
+.bool:
+    mov ecx, r12d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_VAR
+    je .bool_left_var
+    mov r9d, [rax + V_DATA]
+    BYTES 0xB8, 1
+    mov edx, r9d
+    call x64_imm32
+    jmp .bool_right
+.bool_left_var:
+    call var_disp
+    mov r9d, eax
+    OPD 0x87B60F41, 4, r9d
+.bool_right:
+    mov ecx, r13d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_VAR
+    je .bool_right_var
+    mov r9d, [rax + V_DATA]
+    BYTES 0x3D, 1
+    mov edx, r9d
+    call x64_imm32
+    jmp .bool_cc
+.bool_right_var:
+    call var_disp
+    mov r9d, eax
+    OPD 0x8FB60F41, 4, r9d
+    BYTES 0xC839, 2
+.bool_cc:
+    mov ecx, r14d
+    call cc_of_op
+    jmp .ret
+
+.str:
+    mov ecx, r12d
+    call node_addr
+    movzx edx, byte [rax + V_KIND]
+    cmp edx, VK_VAR
+    je .a_var
+    cmp edx, VK_STR
+    je .a_lit
+    BYTES 0xD231C931, 4
+    jmp .b
+.a_var:
+    call var_disp
+    mov r9d, eax
+    OPD 0x8F8B49, 3, r9d
+    add r9d, 8
+    OPD 0x97B70F41, 4, r9d
+    jmp .b
+.a_lit:
+    mov r9d, [rax + V_DATA + 4]
+    mov ecx, [rax + V_DATA]
+    add ecx, [cg_rdelta]
+    push r9
+    OPD 0x8F8D49, 3, ecx
+    BYTES 0xBA, 1
+    pop rdx
+    call x64_imm32
+.b:
+    mov ecx, r13d
+    call node_addr
+    movzx edx, byte [rax + V_KIND]
+    cmp edx, VK_VAR
+    je .b_var
+    cmp edx, VK_STR
+    je .b_lit
+    BYTES 0xC03145, 3
+    BYTES 0xC93145, 3
+    jmp .call
+.b_var:
+    call var_disp
+    mov r9d, eax
+    OPD 0x878B4D, 3, r9d
+    add r9d, 8
+    OPD 0x8FB70F45, 4, r9d
+    jmp .call
+.b_lit:
+    mov r9d, [rax + V_DATA + 4]
+    mov ecx, [rax + V_DATA]
+    add ecx, [cg_rdelta]
+    push r9
+    OPD 0x878D4D, 3, ecx
+    BYTES 0xB941, 2
+    pop rdx
+    call x64_imm32
+.call:
+    CALL_RT RT_FN_STR_EQ
+    BYTES 0xC085, 2
+    mov eax, 5
+    cmp r14d, CMP_IS
+    je .ret
+    mov eax, 4
+.ret:
+    pop r14
+    pop r13
+    pop r12
     ret

@@ -18,6 +18,11 @@ s_exp_rbrace  db "expected '}'", 0
 s_exp_rparen  db "expected ')'", 0
 s_too_deep    db "expression is nested more than 1000 levels deep", 0
 s_too_long    db "expression has more than 2000 values and operators", 0
+s_exp_colon   db "expected ':' after the if condition", 0
+s_exp_block   db "expected an indented block after 'if'", 0
+s_unexp_ind   db "unexpected indentation", 0
+s_exp_cmp     db "expected 'is', 'isnot', '<' or '>' in the if condition", 0
+s_too_many_or db "more than 64 values joined with 'or'", 0
 s_no_float    db "decimal numbers are not supported yet, use int", 0
 s_wrap        db "values next to text must be wrapped in '{ }'", 0
 s_exp_value   db "expected value", 0
@@ -26,6 +31,14 @@ s_exp_number  db "expected number after '-'", 0
 section .bss
 alignb 4
 pr_depth resd 1
+alignb 8
+ps_depth resq 1
+ps_stack resq MAX_BLOCKS + 1
+pg_nops  resq 1
+pg_ops   resd MAX_OR
+pg_op    resd 1
+pg_tok   resd 1
+pg_rhs   resd 1
 
 section .text
 
@@ -69,6 +82,7 @@ FUNC parse
     call mem_alloc
     mov [g_roots], rax
     mov qword [g_nroots], 0
+    mov qword [ps_depth], 0
     mov r12, [g_tokens]
     xor r13d, r13d
     xor r15d, r15d
@@ -82,6 +96,12 @@ FUNC parse
 .not_nl:
     cmp eax, TK_EOF
     je .done
+    cmp eax, TK_DEDENT
+    je .dedent
+    cmp eax, TK_INDENT
+    je .unexpected_indent
+    cmp eax, TK_IF
+    je .if_stmt
     cmp eax, TK_IDENT
     je .var_stmt
     cmp eax, TK_PRINT
@@ -261,6 +281,66 @@ FUNC parse
     je .line_ok
     SYNERR s_exp_eol
 .line_ok:
+    add r14, S_SIZE
+    jmp .stmt
+
+.dedent:
+    dec qword [ps_depth]
+    mov rax, [ps_depth]
+    lea rcx, [ps_stack]
+    mov rax, [rcx + rax * 8]
+    shl rax, 5
+    add rax, [g_stmts]
+    mov rcx, r14
+    sub rcx, [g_stmts]
+    shr rcx, 5
+    mov [rax + S_PIECES], ecx
+    inc r13
+    jmp .stmt
+
+.unexpected_indent:
+    SYNERR s_unexp_ind
+
+.if_stmt:
+    mov word [r14 + S_KIND], SK_IF
+    mov [r14 + S_TOK], r13d
+    inc r13
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov dword [r14 + S_NPARTS], 1
+    mov dword [r14 + S_PIECES], 0
+    call parse_cond
+    call push_root
+    CUR
+    cmp eax, TK_COLON
+    je .if_colon
+    SYNERR s_exp_colon
+.if_colon:
+    inc r13
+    CUR
+    cmp eax, TK_NL
+    je .if_nl
+    cmp eax, TK_EOF
+    je .if_no_block
+    SYNERR s_exp_eol
+.if_nl:
+    inc r13
+    CUR
+    cmp eax, TK_NL
+    je .if_nl
+    cmp eax, TK_INDENT
+    je .if_block
+.if_no_block:
+    SYNERR s_exp_block
+.if_block:
+    inc r13
+    mov rax, [ps_depth]
+    lea rcx, [ps_stack]
+    mov rdx, r14
+    sub rdx, [g_stmts]
+    shr rdx, 5
+    mov [rcx + rax * 8], rdx
+    inc qword [ps_depth]
     add r14, S_SIZE
     jmp .stmt
 
@@ -484,3 +564,101 @@ parse_string:
     call new_node
     inc r13
     ret
+
+new_pair:
+    push rax
+    call new_node
+    pop rdx
+    mov [r10 + V_NEG], r9b
+    mov [r10 + V_DATA], edx
+    mov [r10 + V_DATA + 4], r8d
+    ret
+
+parse_cond:
+    call parse_group
+.loop:
+    push rax
+    CUR
+    cmp eax, TK_OR
+    jne .done
+    push r13
+    inc r13
+    call parse_group
+    mov r8d, eax
+    pop rdx
+    pop rax
+    mov ecx, VK_OR
+    xor r9d, r9d
+    call new_pair
+    jmp .loop
+.done:
+    pop rax
+    ret
+
+parse_group:
+    mov qword [pg_nops], 0
+.operand:
+    mov rax, [pg_nops]
+    cmp rax, MAX_OR
+    jae .too_many
+    push rax
+    call parse_value
+    pop rcx
+    lea rdx, [pg_ops]
+    mov [rdx + rcx * 4], eax
+    inc qword [pg_nops]
+    CUR
+    cmp eax, TK_OR
+    jne .compare
+    inc r13
+    jmp .operand
+.compare:
+    mov r9d, CMP_IS
+    cmp eax, TK_IS
+    je .have_op
+    mov r9d, CMP_ISNOT
+    cmp eax, TK_ISNOT
+    je .have_op
+    mov r9d, CMP_LT
+    cmp eax, TK_LT
+    je .have_op
+    mov r9d, CMP_GT
+    cmp eax, TK_GT
+    je .have_op
+    SYNERR s_exp_cmp
+.have_op:
+    mov [pg_op], r9d
+    mov [pg_tok], r13d
+    inc r13
+    call parse_value
+    mov [pg_rhs], eax
+    mov eax, [pg_ops]
+    mov r8d, [pg_rhs]
+    mov r9d, [pg_op]
+    mov edx, [pg_tok]
+    mov ecx, VK_CMP
+    call new_pair
+    mov rsi, 1
+.chain:
+    cmp rsi, [pg_nops]
+    jae .chain_done
+    push rax
+    lea rdx, [pg_ops]
+    mov eax, [rdx + rsi * 4]
+    mov r8d, [pg_rhs]
+    mov r9d, [pg_op]
+    mov edx, [pg_tok]
+    mov ecx, VK_CMP
+    call new_pair
+    mov r8d, eax
+    pop rax
+    mov edx, [pg_tok]
+    mov ecx, VK_OR
+    xor r9d, r9d
+    call new_pair
+    inc rsi
+    jmp .chain
+.chain_done:
+    ret
+.too_many:
+    SYNERR s_too_many_or
