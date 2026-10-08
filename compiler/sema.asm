@@ -42,6 +42,7 @@ section .bss
 alignb 8
 last_slot resq 1
 last_hash resq 1
+sm_carry  resq 1
 
 section .text
 
@@ -729,6 +730,7 @@ FUNC sema
     jmp .out
 
 .decl:
+    mov qword [sm_carry], 0
     mov ecx, [r12 + S_TOK]
     call var_lookup
     mov r14d, eax
@@ -805,6 +807,7 @@ FUNC sema
     call diag_error_tok
 
 .assign:
+    mov qword [sm_carry], 0
     mov ecx, [r12 + S_TOK]
     call var_lookup
     cmp eax, -1
@@ -863,7 +866,7 @@ FUNC sema
 .out_parts:
     mov rax, [g_npieces]
     mov [r12 + S_PIECES], eax
-    xor r15d, r15d
+    mov r15, [sm_carry]
     xor r14d, r14d
 .part:
     cmp r14d, [r12 + S_NPARTS]
@@ -977,6 +980,7 @@ FUNC sema
     sub eax, [r15 + P_A]
     mov [r15 + P_B], eax
 .out_count:
+    mov [sm_carry], r15
     mov rax, [g_npieces]
     sub eax, [r12 + S_PIECES]
     mov [r12 + S_NPIECES], eax
@@ -989,3 +993,174 @@ FUNC sema
 
 section .rdata
 s_minus_char db "-"
+
+section .bss
+alignb 8
+pc_new  resq 1
+pc_len  resq 1
+pc_tab  resq 1
+pc_mask resq 1
+
+section .text
+
+FUNC pool_compact
+    mov rcx, [g_pool_len]
+    add rcx, 16
+    call mem_alloc
+    mov [pc_new], rax
+    mov qword [pc_len], 0
+    mov rcx, [g_npieces]
+    add rcx, [g_nstmt]
+    shl rcx, 1
+    mov eax, 16
+.cap:
+    cmp rax, rcx
+    jae .cap_ok
+    shl rax, 1
+    jmp .cap
+.cap_ok:
+    lea rdx, [rax - 1]
+    mov [pc_mask], rdx
+    shl rax, 4
+    mov rcx, rax
+    call mem_alloc
+    mov [pc_tab], rax
+
+    mov r12, [g_pieces]
+    mov r13, [g_npieces]
+    shl r13, 4
+    add r13, r12
+.pieces:
+    cmp r12, r13
+    jae .stmts
+    cmp dword [r12 + P_KIND], PK_TEXT
+    jne .piece_next
+    mov ecx, [r12 + P_A]
+    mov edx, [r12 + P_B]
+    call intern
+    mov [r12 + P_A], eax
+.piece_next:
+    add r12, P_SIZE
+    jmp .pieces
+
+.stmts:
+    mov r12, [g_stmts]
+    mov r13, [g_nstmt]
+    shl r13, 5
+    add r13, r12
+.stmt:
+    cmp r12, r13
+    jae .done
+    cmp word [r12 + S_KIND], SK_OUT
+    je .stmt_next
+    cmp dword [r12 + S_NPARTS], 0
+    je .stmt_next
+    mov eax, [r12 + S_PARTS]
+    mov rdx, [g_roots]
+    mov eax, [rdx + rax * 4]
+    shl rax, 4
+    add rax, [g_parts]
+    mov r14, rax
+    cmp byte [r14 + V_KIND], VK_STR
+    jne .stmt_next
+    mov ecx, [r14 + V_DATA]
+    mov edx, [r14 + V_DATA + 4]
+    call intern
+    mov [r14 + V_DATA], eax
+.stmt_next:
+    add r12, S_SIZE
+    jmp .stmt
+.done:
+    mov rax, [pc_new]
+    mov [g_pool], rax
+    mov rax, [pc_len]
+    mov [g_pool_len], rax
+    ENDF
+
+FUNC intern
+    mov r12d, ecx
+    mov r13d, edx
+    mov rsi, [g_pool]
+    add rsi, r12
+    mov r9, 0x100000001b3
+    mov rbx, r13
+    imul rbx, r9
+    xor ecx, ecx
+.hash:
+    cmp rcx, r13
+    jae .hashed
+    mov rax, [rsi + rcx]
+    mov rdx, r13
+    sub rdx, rcx
+    cmp rdx, 8
+    jae .hash_full
+    push rcx
+    lea ecx, [edx * 8]
+    mov rdx, -1
+    shl rdx, cl
+    not rdx
+    and rax, rdx
+    pop rcx
+.hash_full:
+    xor rbx, rax
+    imul rbx, r9
+    add rcx, 8
+    jmp .hash
+.hashed:
+    mov r14, rbx
+    and r14, [pc_mask]
+.probe:
+    mov r15, r14
+    shl r15, 4
+    add r15, [pc_tab]
+    mov eax, [r15 + 8]
+    test eax, eax
+    jz .insert
+    cmp [r15], rbx
+    jne .next
+    cmp [r15 + 12], r13d
+    jne .next
+    lea rdi, [rax - 1]
+    add rdi, [pc_new]
+    xor ecx, ecx
+.cmp_loop:
+    cmp rcx, r13
+    jae .cmp_equal
+    mov rax, [rsi + rcx]
+    xor rax, [rdi + rcx]
+    mov rdx, r13
+    sub rdx, rcx
+    cmp rdx, 8
+    jae .cmp_full
+    push rcx
+    lea ecx, [edx * 8]
+    mov rdx, -1
+    shl rdx, cl
+    not rdx
+    and rax, rdx
+    pop rcx
+.cmp_full:
+    test rax, rax
+    jnz .next
+    add rcx, 8
+    jmp .cmp_loop
+.cmp_equal:
+    mov eax, [r15 + 8]
+    dec eax
+    ENDF
+.next:
+    inc r14
+    and r14, [pc_mask]
+    jmp .probe
+.insert:
+    mov rdi, [pc_new]
+    add rdi, [pc_len]
+    mov rcx, r13
+    rep movsb
+    mov rax, [pc_len]
+    mov [r15], rbx
+    lea edx, [eax + 1]
+    mov [r15 + 8], edx
+    mov [r15 + 12], r13d
+    add [pc_len], r13
+    ENDF
