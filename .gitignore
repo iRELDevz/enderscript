@@ -6,3 +6,4 @@
 *.a
 /tests/out/
 /tests/build/
+/benchwork/

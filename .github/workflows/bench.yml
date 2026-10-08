@@ -1,0 +1,37 @@
+name: bench-linux-arm64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+      - name: Build compiler
+        run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ender-linux-arm64
+          path: ender
+
+  bench:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ender-linux-arm64
+      - name: Machine
+        run: lscpu | grep -E "Model name|^CPU\(s\)" || true
+      - name: Benchmark
+        run: chmod +x ender && python3 -u bench/bench_all.py ./ender linux-arm64 es,c,cpp,rust,python,node
+        env:
+          BENCH_DIR: benchwork
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-linux-arm64
+          path: benchwork/result_linux-arm64.json
