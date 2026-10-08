@@ -23,6 +23,14 @@ s_exp_block   db "expected an indented block after 'if'", 0
 s_unexp_ind   db "unexpected indentation", 0
 s_exp_cmp     db "expected 'is', 'isnot', '<' or '>' in the if condition", 0
 s_too_many_or db "more than 64 values joined with 'or'", 0
+s_exp_loopvar db "expected a variable name after 'for'", 0
+s_exp_in      db "expected 'in' after the loop variable", 0
+s_exp_range   db "expected 'range' after 'in'", 0
+s_exp_lp_r    db "expected '(' after 'range'", 0
+s_exp_lp_l    db "expected '(' after 'loops'", 0
+s_exp_colon_l db "expected ':' after the loop header", 0
+s_exp_blk_for db "expected an indented block after 'for'", 0
+s_exp_blk_lps db "expected an indented block after 'loops'", 0
 s_no_float    db "decimal numbers are not supported yet, use int", 0
 s_wrap        db "values next to text must be wrapped in '{ }'", 0
 s_exp_value   db "expected value", 0
@@ -33,6 +41,7 @@ alignb 4
 pr_depth resd 1
 alignb 8
 ps_depth resq 1
+pr_bmsg  resq 1
 ps_stack resq MAX_BLOCKS + 1
 pg_nops  resq 1
 pg_ops   resd MAX_OR
@@ -102,6 +111,10 @@ FUNC parse
     je .unexpected_indent
     cmp eax, TK_IF
     je .if_stmt
+    cmp eax, TK_FOR
+    je .for_stmt
+    cmp eax, TK_LOOPS
+    je .loops_stmt
     cmp eax, TK_IDENT
     je .var_stmt
     cmp eax, TK_PRINT
@@ -302,6 +315,8 @@ FUNC parse
     SYNERR s_unexp_ind
 
 .if_stmt:
+    lea rax, [s_exp_block]
+    mov [pr_bmsg], rax
     mov word [r14 + S_KIND], SK_IF
     mov [r14 + S_TOK], r13d
     inc r13
@@ -331,7 +346,9 @@ FUNC parse
     cmp eax, TK_INDENT
     je .if_block
 .if_no_block:
-    SYNERR s_exp_block
+    mov rcx, [pr_bmsg]
+    mov edx, r13d
+    jmp syn_error
 .if_block:
     inc r13
     mov rax, [ps_depth]
@@ -343,6 +360,66 @@ FUNC parse
     inc qword [ps_depth]
     add r14, S_SIZE
     jmp .stmt
+
+.for_stmt:
+    lea rax, [s_exp_blk_for]
+    mov [pr_bmsg], rax
+    mov word [r14 + S_KIND], SK_FOR
+    mov dword [r14 + S_PIECES], 0
+    inc r13
+    CUR
+    cmp eax, TK_IDENT
+    je .for_var
+    SYNERR s_exp_loopvar
+.for_var:
+    mov [r14 + S_TOK], r13d
+    inc r13
+    CUR
+    cmp eax, TK_IN
+    je .for_in
+    SYNERR s_exp_in
+.for_in:
+    inc r13
+    CUR
+    cmp eax, TK_RANGE
+    je .for_range
+    SYNERR s_exp_range
+.for_range:
+    inc r13
+    CUR
+    cmp eax, TK_LPAREN
+    je .loop_count
+    SYNERR s_exp_lp_r
+
+.loops_stmt:
+    lea rax, [s_exp_blk_lps]
+    mov [pr_bmsg], rax
+    mov word [r14 + S_KIND], SK_LOOPS
+    mov dword [r14 + S_PIECES], 0
+    mov [r14 + S_TOK], r13d
+    inc r13
+    CUR
+    cmp eax, TK_LPAREN
+    je .loop_count
+    SYNERR s_exp_lp_l
+
+.loop_count:
+    inc r13
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov dword [r14 + S_NPARTS], 1
+    call parse_value
+    call push_root
+    CUR
+    cmp eax, TK_RPAREN
+    je .loop_rparen
+    SYNERR s_exp_rparen
+.loop_rparen:
+    inc r13
+    CUR
+    cmp eax, TK_COLON
+    je .if_colon
+    SYNERR s_exp_colon_l
 
 .unknown_type:
     mov ebx, r13d
