@@ -5,3 +5,6 @@
 *.S text eol=lf
 *.h text eol=lf
 *.yml text eol=lf
+*.es -text
+*.expect -text
+*.out -text

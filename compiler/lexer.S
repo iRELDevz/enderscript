@@ -152,6 +152,13 @@ FUNC lex
 .Llx_newline:
     mov w9, #TK_NL
     mov x10, x20
+    cmp x10, x22
+    b.ls .Llx_nl_emit
+    ldrb w12, [x10, #-1]
+    cmp w12, #13
+    b.ne .Llx_nl_emit
+    sub x10, x10, #1
+.Llx_nl_emit:
     mov w11, #1
     EMIT_TOK
     add x20, x20, #1
