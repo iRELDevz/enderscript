@@ -118,6 +118,41 @@ rt_flush:
     pop rsi
     ret
 
+rt_div_zero:
+    and rsp, -16
+    mov ebx, edx
+    call rt_flush
+    sub rsp, 128
+    lea r13, [rsp + 128]
+    mov byte [r13 - 1], 10
+    lea r12, [r13 - 1]
+    mov eax, ebx
+    mov ecx, 10
+.digit:
+    xor edx, edx
+    div ecx
+    add dl, '0'
+    dec r12
+    mov [r12], dl
+    test eax, eax
+    jnz .digit
+    sub r12, rt_s_divz_len
+    mov rdi, r12
+    lea rsi, [rt_s_divz]
+    mov ecx, rt_s_divz_len
+    rep movsb
+    mov eax, 1
+    mov edi, 2
+    mov rsi, r12
+    mov rdx, r13
+    sub rdx, r12
+    syscall
+    mov eax, 231
+    mov edi, 1
+    syscall
+
+rt_s_divz db "runtime error: division by zero on line "
+rt_s_divz_len equ $ - rt_s_divz
 rt_s_true  db "true"
 rt_s_false db "false"
 rt_s_null  db "null"
@@ -132,3 +167,4 @@ rt_offsets:
     dd rt_write_bool - rt_start
     dd rt_write_str - rt_start
     dd rt_flush - rt_start
+    dd rt_div_zero - rt_start

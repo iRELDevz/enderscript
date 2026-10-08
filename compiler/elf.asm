@@ -38,6 +38,9 @@ FUNC elf_layout
     mov rdx, [g_npieces]
     shl rdx, 5
     add rcx, rdx
+    mov rdx, [g_nparts]
+    imul rdx, rdx, 48
+    add rcx, rdx
     mov edx, [rt_size]
     add rcx, rdx
     add rcx, 4096

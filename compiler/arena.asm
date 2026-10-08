@@ -10,6 +10,8 @@
 %define OWN_g_nstmt
 %define OWN_g_parts
 %define OWN_g_nparts
+%define OWN_g_roots
+%define OWN_g_nroots
 %define OWN_g_pieces
 %define OWN_g_npieces
 %define OWN_g_vars
@@ -25,7 +27,7 @@
 section .bss
 global g_src, g_src_len, g_file, g_hout, g_herr
 global g_tokens, g_ntok, g_stmts, g_nstmt, g_parts, g_nparts
-global g_pieces, g_npieces, g_vars, g_nvars, g_htab, g_hmask
+global g_roots, g_nroots, g_pieces, g_npieces, g_vars, g_nvars, g_htab, g_hmask
 global g_pool, g_pool_len, g_vars_size
 alignb 8
 g_src       resq 1
@@ -39,6 +41,8 @@ g_stmts     resq 1
 g_nstmt     resq 1
 g_parts     resq 1
 g_nparts    resq 1
+g_roots     resq 1
+g_nroots    resq 1
 g_pieces    resq 1
 g_npieces   resq 1
 g_vars      resq 1
