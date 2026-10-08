@@ -73,7 +73,7 @@ FUNC pe_layout
     add rax, FILE_ALIGN
     mov [pe_text_file], rax
     mov rcx, [g_nstmt]
-    shl rcx, 6
+    imul rcx, rcx, 384
     mov rdx, [g_npieces]
     shl rdx, 5
     add rcx, rdx
@@ -82,7 +82,7 @@ FUNC pe_layout
     add rcx, rdx
     mov edx, [rt_size]
     add rcx, rdx
-    add rcx, 4096
+    add rcx, 4096 + 65536
     add rcx, rax
     call mem_alloc
     mov [g_image], rax
