@@ -20,6 +20,12 @@ s_outside:    .asciz " is outside -2147483648..2147483647"
 s_str_long:   .asciz "string is longer than 65535 bytes"
 s_mode1:      .asciz "unknown print mode '."
 s_mode2:      .asciz "', expected '.s'"
+s_overflow:   .asciz "integer overflow in constant expression, the result wraps to "
+s_div_zero:   .asciz "division by zero"
+s_operator:   .asciz "operator '"
+s_needs_bin:  .asciz "' needs int operands, got "
+s_needs_un:   .asciz "' needs an int operand, got "
+op_chars:     .ascii " +-*/%-"
 s_tn_int:     .asciz "int"
 s_tn_str:     .asciz "str"
 s_tn_bool:    .asciz "bool"
@@ -100,10 +106,28 @@ LEAF new_piece
     ret
 
 LEAF value_pos
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_EXPR
+    b.ne 2f
     ldrb w9, [x0, #V_NEG]
+    cmp w9, #OP_NEG
+    b.eq 1f
+    ldr w9, [x0, #V_DATA]
+    LDX x10, g_parts
+    add x0, x10, x9, lsl #4
+    b value_pos
+1:  ldr w0, [x0, #V_TOK]
+    ret
+2:  ldrb w9, [x0, #V_NEG]
     ldr w10, [x0, #V_TOK]
     sub w0, w10, w9
     ret
+
+LEAF node_ptr
+    LDX x9, g_parts
+    add x0, x9, w0, uxtw #4
+    ret
+
 
 FUNC var_lookup
     bl tok_text
@@ -208,6 +232,8 @@ FUNC check_value
     b.eq .Lcv_str
     cmp w9, #VK_VAR
     b.eq .Lcv_var
+    cmp w9, #VK_EXPR
+    b.eq .Lcv_expr
     mov w20, #TY_BOOL
     cmp w9, #VK_BOOL
     b.eq .Lcv_done
@@ -316,6 +342,11 @@ FUNC check_value
     LA x0, s_semantic
     ldr w1, [x19, #V_TOK]
     bl diag_error_tok
+
+.Lcv_expr:
+    mov x0, x19
+    bl check_expr
+    mov w20, w0
 
 .Lcv_done:
     strb w20, [x19, #V_TYPE]
@@ -471,6 +502,8 @@ FUNC sema
     ldr w9, [x19, #S_NPARTS]
     cbz w9, .Lsm_decl_store
     ldr w9, [x19, #S_PARTS]
+    LDX x10, g_roots
+    ldr w9, [x10, x9, lsl #2]
     LDX x10, g_parts
     add x0, x10, x9, lsl #4
     ldrh w1, [x19, #S_MODE]
@@ -537,6 +570,8 @@ FUNC sema
     ldr w9, [x19, #S_NPARTS]
     cbz w9, .Lsm_next
     ldr w9, [x19, #S_PARTS]
+    LDX x10, g_roots
+    ldr w9, [x10, x9, lsl #2]
     LDX x10, g_parts
     add x0, x10, x9, lsl #4
     ldr w2, [x19, #S_TOK]
@@ -577,6 +612,8 @@ FUNC sema
     b.hs .Lsm_parts_done
     ldr w9, [x19, #S_PARTS]
     add w9, w9, w25
+    LDX x10, g_roots
+    ldr w9, [x10, x9, lsl #2]
     LDX x10, g_parts
     add x22, x10, x9, lsl #4
     LDX x26, g_pool_len
@@ -586,6 +623,8 @@ FUNC sema
     mov x0, x22
     bl value_finish
     ldrb w9, [x22, #V_KIND]
+    cmp w9, #VK_EXPR
+    b.eq .Lsm_part_expr
     cmp w9, #VK_VAR
     b.eq .Lsm_part_var
     cmp w9, #VK_INT
@@ -644,6 +683,14 @@ FUNC sema
     b.eq 7f
     mov w0, #PK_STR
 7:  bl new_piece
+    b .Lsm_part_next
+.Lsm_part_expr:
+    mov x24, #0
+    LDX x9, g_parts
+    sub x1, x22, x9
+    lsr x1, x1, #4
+    mov w0, #PK_EXPR
+    bl new_piece
 .Lsm_part_next:
     add w25, w25, #1
     b .Lsm_part
@@ -674,3 +721,222 @@ FUNC sema
     b .Lsm_stmt
 .Lsm_finish:
     ENDF
+
+set_const:
+    mov x15, x30
+    mov x0, x19
+    bl value_pos
+    mov x30, x15
+    mov w9, #VK_INT
+    strb w9, [x19, #V_KIND]
+    strb wzr, [x19, #V_NEG]
+    strb wzr, [x19, #V_BAD]
+    str w0, [x19, #V_TOK]
+    str x27, [x19, #V_DATA]
+    ret
+
+copy_node:
+    ldp x9, x10, [x0]
+    stp x9, x10, [x19]
+    ret
+
+FUNC check_expr
+    mov x19, x0
+    ldrb w20, [x19, #V_NEG]
+    ldr w0, [x19, #V_DATA]
+    bl node_ptr
+    mov x21, x0
+    bl check_value
+    mov w23, w0
+    mov x0, x21
+    bl value_finish
+    cmp w23, #TY_INT
+    b.ne .Lce_bad
+    cmp w20, #OP_NEG
+    b.eq .Lce_unary
+    ldr w0, [x19, #V_DATA_HI]
+    bl node_ptr
+    mov x22, x0
+    bl check_value
+    mov w23, w0
+    mov x0, x22
+    bl value_finish
+    cmp w23, #TY_INT
+    b.ne .Lce_bad
+    mov w24, #0
+    ldrb w9, [x21, #V_KIND]
+    cmp w9, #VK_INT
+    b.ne 1f
+    orr w24, w24, #1
+1:  ldrb w9, [x22, #V_KIND]
+    cmp w9, #VK_INT
+    b.ne 2f
+    orr w24, w24, #2
+2:  ldr x25, [x21, #V_DATA]
+    ldr x26, [x22, #V_DATA]
+    tbz w24, #1, 3f
+    cbnz x26, 3f
+    cmp w20, #OP_DIV
+    b.eq .Lce_div_zero
+    cmp w20, #OP_MOD
+    b.eq .Lce_div_zero
+3:  cmp w24, #3
+    b.eq .Lce_fold
+    tbnz w24, #1, .Lce_right_const
+    tbnz w24, #0, .Lce_left_const
+    b .Lce_int
+
+.Lce_right_const:
+    cmp w20, #OP_ADD
+    b.eq 4f
+    cmp w20, #OP_SUB
+    b.eq 4f
+    cmp w20, #OP_MUL
+    b.eq 5f
+    cmp w20, #OP_DIV
+    b.eq 6f
+    b 7f
+4:  cbz x26, .Lce_take_left
+    b .Lce_int
+5:  cbnz x26, 6f
+    ldrb w9, [x21, #V_KIND]
+    cmp w9, #VK_VAR
+    b.eq .Lce_zero
+    b .Lce_int
+6:  cmp x26, #1
+    b.eq .Lce_take_left
+    cmn x26, #1
+    b.ne .Lce_int
+    mov x0, x21
+    bl value_pos
+    str w0, [x19, #V_TOK]
+    mov w9, #OP_NEG
+    strb w9, [x19, #V_NEG]
+    mov w9, #-1
+    str w9, [x19, #V_DATA_HI]
+    b .Lce_int
+7:  ldrb w9, [x21, #V_KIND]
+    cmp w9, #VK_VAR
+    b.ne .Lce_int
+    cmp x26, #1
+    b.eq .Lce_zero
+    cmn x26, #1
+    b.eq .Lce_zero
+    b .Lce_int
+
+.Lce_left_const:
+    cmp w20, #OP_ADD
+    b.eq 8f
+    cmp w20, #OP_SUB
+    b.eq 9f
+    cmp w20, #OP_MUL
+    b.ne .Lce_int
+    cbnz x25, 10f
+    ldrb w9, [x22, #V_KIND]
+    cmp w9, #VK_VAR
+    b.eq .Lce_zero
+    b .Lce_int
+10: cmp x25, #1
+    b.eq .Lce_take_right
+    b .Lce_int
+8:  cbz x25, .Lce_take_right
+    b .Lce_int
+9:  cbnz x25, .Lce_int
+    ldr w9, [x21, #V_TOK]
+    str w9, [x19, #V_TOK]
+    ldr w9, [x19, #V_DATA_HI]
+    str w9, [x19, #V_DATA]
+    mov w9, #OP_NEG
+    strb w9, [x19, #V_NEG]
+    mov w9, #-1
+    str w9, [x19, #V_DATA_HI]
+    b .Lce_int
+
+.Lce_take_left:
+    mov x0, x21
+    bl copy_node
+    b .Lce_int
+.Lce_take_right:
+    mov x0, x22
+    bl copy_node
+    b .Lce_int
+.Lce_zero:
+    mov x27, #0
+    bl set_const
+    b .Lce_int
+
+.Lce_unary:
+    ldrb w9, [x21, #V_KIND]
+    cmp w9, #VK_INT
+    b.ne .Lce_int
+    ldr x27, [x21, #V_DATA]
+    neg x27, x27
+    b .Lce_store
+
+.Lce_fold:
+    cmp w20, #OP_ADD
+    b.ne 11f
+    add x27, x25, x26
+    b .Lce_store
+11: cmp w20, #OP_SUB
+    b.ne 12f
+    sub x27, x25, x26
+    b .Lce_store
+12: cmp w20, #OP_MUL
+    b.ne 13f
+    mul x27, x25, x26
+    b .Lce_store
+13: sdiv x27, x25, x26
+    cmp w20, #OP_DIV
+    b.eq .Lce_store
+    msub x27, x27, x26, x25
+.Lce_store:
+    sxtw x9, w27
+    cmp x9, x27
+    b.eq .Lce_store_ok
+    mov x27, x9
+    bl msg_reset
+    LA x0, s_overflow
+    bl msg_addz
+    mov x0, x27
+    tbz x27, #63, 14f
+    mov w0, #'-'
+    bl msg_addc
+    neg x0, x27
+14: bl msg_addu
+    ldr w0, [x19, #V_TOK]
+    bl diag_warn_tok
+.Lce_store_ok:
+    bl set_const
+
+.Lce_int:
+    mov w0, #TY_INT
+    ENDF
+
+.Lce_div_zero:
+    bl msg_reset
+    LA x0, s_div_zero
+    bl msg_addz
+    LA x0, s_semantic
+    ldr w1, [x19, #V_TOK]
+    bl diag_error_tok
+
+.Lce_bad:
+    bl msg_reset
+    LA x0, s_operator
+    bl msg_addz
+    LA x9, op_chars
+    ldrb w0, [x9, x20]
+    bl msg_addc
+    LA x0, s_needs_bin
+    cmp w20, #OP_NEG
+    b.ne 15f
+    LA x0, s_needs_un
+15: bl msg_addz
+    mov w0, w23
+    bl type_name
+    bl msg_addz
+    LA x0, s_type
+    ldr w1, [x19, #V_TOK]
+    bl diag_error_tok
+

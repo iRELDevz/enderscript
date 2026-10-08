@@ -91,6 +91,8 @@ FUNC img_layout
     lsl x0, x0, #7
     LDX x9, g_npieces
     add x0, x0, x9, lsl #6
+    LDX x9, g_nparts
+    add x0, x0, x9, lsl #6
     LA x9, rt_size
     ldr w9, [x9]
     add x0, x0, x9

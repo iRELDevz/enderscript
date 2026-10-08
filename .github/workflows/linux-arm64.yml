@@ -36,3 +36,12 @@ jobs:
           ./hello
       - name: Tests
         run: python3 tests/run_tests.py ./ender
+      - name: Runtime division by zero
+        run: |
+          printf 'a.int = 10\nb.int = 0\nc.int = a / b\n' > divzero.es
+          ./ender build divzero.es
+          set +e
+          ./divzero
+          test $? -eq 1
+      - name: Fuzz arithmetic
+        run: for s in $(seq 1 20); do python3 tests/fuzz_expr.py ./ender $s 400 || exit 1; done

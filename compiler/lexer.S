@@ -102,6 +102,21 @@ FUNC lex
     mov w9, #TK_MINUS
     cmp w0, #'-'
     b.eq .Llx_single
+    mov w9, #TK_PLUS
+    cmp w0, #'+'
+    b.eq .Llx_single
+    mov w9, #TK_STAR
+    cmp w0, #'*'
+    b.eq .Llx_single
+    mov w9, #TK_PERCENT
+    cmp w0, #'%'
+    b.eq .Llx_single
+    mov w9, #TK_LPAREN
+    cmp w0, #'('
+    b.eq .Llx_single
+    mov w9, #TK_RPAREN
+    cmp w0, #')'
+    b.eq .Llx_single
     mov w9, #TK_LBRACE
     cmp w0, #'{'
     b.eq .Llx_single
@@ -147,10 +162,17 @@ FUNC lex
 .Llx_slash:
     add x1, x20, #1
     cmp x1, x21
-    b.hs .Llx_unexpected
+    b.hs .Llx_slash_one
     ldrb w1, [x1]
     cmp w1, #'/'
-    b.ne .Llx_unexpected
+    b.eq .Llx_comment
+.Llx_slash_one:
+    mov w9, #TK_SLASH
+    mov x10, x20
+    mov w11, #1
+    EMIT_TOK
+    add x20, x20, #1
+    b .Llx_next
 .Llx_comment:
     cmp x20, x21
     b.hs .Llx_next
@@ -225,6 +247,32 @@ FUNC lex
     b.ls .Llx_num_loop
 .Llx_num_end:
     mov w9, #TK_INT
+    cmp x20, x21
+    b.hs .Llx_num_emit
+    ldrb w0, [x20]
+    cmp w0, #'.'
+    b.ne .Llx_num_emit
+    add x1, x20, #1
+    cmp x1, x21
+    b.hs .Llx_num_emit
+    ldrb w0, [x1]
+    cmp w0, #'0'
+    b.lo .Llx_num_emit
+    cmp w0, #'9'
+    b.hi .Llx_num_emit
+    add x20, x20, #1
+.Llx_num_frac:
+    add x20, x20, #1
+    cmp x20, x21
+    b.hs .Llx_num_float
+    ldrb w0, [x20]
+    cmp w0, #'0'
+    b.lo .Llx_num_float
+    cmp w0, #'9'
+    b.ls .Llx_num_frac
+.Llx_num_float:
+    mov w9, #TK_FNUM
+.Llx_num_emit:
     mov x10, x25
     sub x11, x20, x25
     EMIT_TOK
