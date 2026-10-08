@@ -1,0 +1,40 @@
+name: windows-arm64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build compiler
+        shell: pwsh
+        run: ./build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ender-windows-arm64
+          path: ender.exe
+
+  test:
+    needs: build
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ender-windows-arm64
+      - name: Version
+        shell: pwsh
+        run: ./ender.exe --version
+      - name: Hello world
+        shell: pwsh
+        run: |
+          Set-Content -Path hello.es -Value 'print>>"Hello World"' -NoNewline
+          ./ender.exe build hello.es
+          ./hello.exe
+      - name: Tests
+        shell: pwsh
+        run: ./tests/run_tests.ps1 -Compiler ./ender.exe

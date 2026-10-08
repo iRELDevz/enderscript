@@ -1,0 +1,7 @@
+*.S linguist-language=Assembly
+*.h linguist-language=Assembly
+*.def linguist-detectable=false
+*.sh text eol=lf
+*.S text eol=lf
+*.h text eol=lf
+*.yml text eol=lf

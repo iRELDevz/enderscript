@@ -1,0 +1,16 @@
+LIBRARY kernel32.dll
+EXPORTS
+GetCommandLineA
+GetStdHandle
+WriteFile
+ReadFile
+CreateFileA
+GetFileSizeEx
+CloseHandle
+ExitProcess
+CreateProcessA
+WaitForSingleObject
+GetExitCodeProcess
+CreateDirectoryA
+DeleteFileA
+VirtualAlloc
