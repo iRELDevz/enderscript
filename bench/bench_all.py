@@ -9,14 +9,14 @@ import time
 ender = os.path.abspath(sys.argv[1])
 label = sys.argv[2]
 langs = sys.argv[3].split(",")
-runs = int(os.environ.get("BENCH_RUNS", "10"))
-compile_timeout = int(os.environ.get("BENCH_COMPILE_TIMEOUT", "900"))
+runs = int(os.environ.get("BENCH_RUNS", "5"))
+compile_timeout = int(os.environ.get("BENCH_COMPILE_TIMEOUT", "120"))
 luajit = os.environ.get("LUAJIT", "luajit")
 work = os.path.abspath(os.environ.get("BENCH_DIR", "benchwork"))
 os.makedirs(work, exist_ok=True)
 win = os.name == "nt"
 exe = ".exe" if win else ""
-N = 20000
+N = int(os.environ.get("BENCH_N", "2000"))
 NL = chr(92) + "n"
 
 
