@@ -27,6 +27,15 @@ default rel
 %define TK_LPAREN   23
 %define TK_RPAREN   24
 %define TK_FNUM     25
+%define TK_IF       26
+%define TK_IS       27
+%define TK_ISNOT    28
+%define TK_OR       29
+%define TK_LT       30
+%define TK_GT       31
+%define TK_COLON    32
+%define TK_INDENT   33
+%define TK_DEDENT   34
 
 %define T_KIND      0
 %define T_COL       2
@@ -46,6 +55,13 @@ default rel
 %define VK_NULL     4
 %define VK_VAR      5
 %define VK_EXPR     6
+%define VK_CMP      7
+%define VK_OR       8
+
+%define CMP_IS      1
+%define CMP_ISNOT   2
+%define CMP_LT      3
+%define CMP_GT      4
 
 %define V_KIND      0
 %define V_NEG       1
@@ -58,6 +74,7 @@ default rel
 %define SK_DECL     1
 %define SK_ASSIGN   2
 %define SK_OUT      3
+%define SK_IF       4
 
 %define S_KIND      0
 %define S_MODE      2
@@ -99,6 +116,8 @@ default rel
 %define NO_EXPR     0xFFFFFFFF
 %define MAX_DEPTH   1000
 %define MAX_NODES   2000
+%define MAX_BLOCKS  100
+%define MAX_OR      64
 
 %define RT_OUT_LEN    0
 %define RT_STDOUT     8
