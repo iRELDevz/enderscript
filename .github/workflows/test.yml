@@ -1,0 +1,38 @@
+name: linux-arm64
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+      - name: Build compiler
+        run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ender-linux-arm64
+          path: ender
+
+  test:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ender-linux-arm64
+      - name: Version
+        run: chmod +x ender && ./ender --version
+      - name: Hello world
+        run: |
+          printf 'print>>"Hello World"' > hello.es
+          ./ender build hello.es
+          ./hello
+      - name: Tests
+        run: python3 tests/run_tests.py ./ender

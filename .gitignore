@@ -1,0 +1,7 @@
+/build/
+/.ender/
+/ender
+/ender.exe
+*.o
+*.a
+/tests/out/

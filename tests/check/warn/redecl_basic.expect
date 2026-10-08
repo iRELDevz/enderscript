@@ -1,0 +1,1 @@
+redecl_basic.es:2:1: warning: variable 'a' is already declared at line 1, the latest declaration claims the value

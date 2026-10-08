@@ -1,0 +1,1 @@
+type_int_range_neg.es:1:9: type error: int literal -2147483649 is outside -2147483648..2147483647
