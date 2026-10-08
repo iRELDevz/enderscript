@@ -36,6 +36,10 @@ default rel
 %define TK_COLON    32
 %define TK_INDENT   33
 %define TK_DEDENT   34
+%define TK_FOR      35
+%define TK_IN       36
+%define TK_RANGE    37
+%define TK_LOOPS    38
 
 %define T_KIND      0
 %define T_COL       2
@@ -75,6 +79,12 @@ default rel
 %define SK_ASSIGN   2
 %define SK_OUT      3
 %define SK_IF       4
+%define SK_FOR      5
+%define SK_LOOPS    6
+
+%define BK_IF       1
+%define BK_LOOP     2
+%define MAX_REG_LOOPS 6
 
 %define S_KIND      0
 %define S_MODE      2

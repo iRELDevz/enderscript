@@ -27,6 +27,10 @@ keywords:
     db 2, TK_IS,    "is"
     db 5, TK_ISNOT, "isnot"
     db 2, TK_OR,    "or"
+    db 3, TK_FOR,   "for"
+    db 2, TK_IN,    "in"
+    db 5, TK_RANGE, "range"
+    db 5, TK_LOOPS, "loops"
     db 0
 
 global escape_chars

@@ -35,6 +35,11 @@ s_in_if1     db "variable '", 0
 s_in_if2     db "' must be declared before the if block", 0
 s_str_if1    db "cannot declare str variable '", 0
 s_str_if2    db "' inside an if block", 0
+s_in_loop2   db "' must be declared before the loop", 0
+s_str_loop2  db "' inside a loop", 0
+s_count1     db "loop count must be int, got ", 0
+s_lvar1      db "loop variable '", 0
+s_lvar2      db "' must be int, it is declared as ", 0
 cmp_chars    db "   <>"
 s_tn_int     db "int", 0
 s_tn_str     db "str", 0
@@ -52,6 +57,7 @@ last_hash resq 1
 sm_carry  resq 1
 sm_bdepth resq 1
 sm_bstack resq MAX_BLOCKS + 1
+sm_bkind  resq MAX_BLOCKS + 1
 
 section .text
 
@@ -754,6 +760,10 @@ FUNC sema
     movzx eax, word [r12 + S_KIND]
     cmp eax, SK_IF
     je .if_stmt
+    cmp eax, SK_FOR
+    je .loop_stmt
+    cmp eax, SK_LOOPS
+    je .loop_stmt
     cmp eax, SK_DECL
     je .decl
     cmp eax, SK_ASSIGN
@@ -862,6 +872,10 @@ FUNC sema
     mov ecx, [r12 + S_TOK]
     call msg_tok
     lea rcx, [s_str_if2]
+    call block_is_loop
+    jne .str_msg
+    lea rcx, [s_str_loop2]
+.str_msg:
     call msg_addz
     lea rcx, [s_semantic]
     mov edx, [r12 + S_TOK]
@@ -873,6 +887,10 @@ FUNC sema
     mov ecx, [r12 + S_TOK]
     call msg_tok
     lea rcx, [s_in_if2]
+    call block_is_loop
+    jne .undecl_msg
+    lea rcx, [s_in_loop2]
+.undecl_msg:
     call msg_addz
     lea rcx, [s_semantic]
     mov edx, [r12 + S_TOK]
@@ -890,8 +908,101 @@ FUNC sema
     lea rdx, [sm_bstack]
     mov eax, [r12 + S_PIECES]
     mov [rdx + rcx * 8], rax
+    lea rdx, [sm_bkind]
+    mov qword [rdx + rcx * 8], BK_IF
     inc qword [sm_bdepth]
     jmp .next
+
+.loop_stmt:
+    mov qword [sm_carry], 0
+    mov eax, [r12 + S_PARTS]
+    mov rdx, [g_roots]
+    mov ecx, [rdx + rax * 4]
+    shl rcx, 4
+    add rcx, [g_parts]
+    mov rbx, rcx
+    call check_value
+    mov r14d, eax
+    mov rcx, rbx
+    call value_finish
+    cmp r14d, TY_INT
+    jne .bad_count
+    mov rax, [g_vars_size]
+    add rax, 3
+    and rax, -4
+    mov [r12 + S_NPIECES], eax
+    add rax, 8
+    mov [g_vars_size], rax
+    cmp word [r12 + S_KIND], SK_FOR
+    jne .loop_push
+    mov ecx, [r12 + S_TOK]
+    call var_lookup
+    cmp eax, -1
+    je .loop_new_var
+    mov r15d, eax
+    shl rax, 5
+    add rax, [g_vars]
+    movzx ecx, word [rax + VR_TYPE]
+    cmp ecx, TY_INT
+    jne .bad_loop_var
+    mov [r12 + S_VAR], r15d
+    jmp .loop_push
+.loop_new_var:
+    cmp qword [sm_bdepth], 0
+    jne .undeclared_in_block
+    mov ecx, [r12 + S_TOK]
+    mov edx, TY_INT
+    call var_insert
+    mov [r12 + S_VAR], eax
+    mov r15d, eax
+    mov ecx, [r12 + S_TOK]
+    call tok_line
+    mov ecx, r15d
+    shl rcx, 5
+    add rcx, [g_vars]
+    mov [rcx + VR_LINE], eax
+.loop_push:
+    mov rcx, [sm_bdepth]
+    lea rdx, [sm_bstack]
+    mov eax, [r12 + S_PIECES]
+    mov [rdx + rcx * 8], rax
+    lea rdx, [sm_bkind]
+    mov qword [rdx + rcx * 8], BK_LOOP
+    inc qword [sm_bdepth]
+    jmp .next
+.bad_count:
+    call msg_reset
+    lea rcx, [s_count1]
+    call msg_addz
+    mov ecx, r14d
+    call type_name
+    mov rcx, rax
+    call msg_addz
+    mov rcx, rbx
+    call value_pos
+    lea rcx, [s_type]
+    call diag_error_tok
+.bad_loop_var:
+    mov r14d, ecx
+    call msg_reset
+    lea rcx, [s_lvar1]
+    call msg_addz
+    mov ecx, [r12 + S_TOK]
+    call msg_tok
+    lea rcx, [s_lvar2]
+    call msg_addz
+    lea rcx, [s_an_int]
+    cmp r14d, TY_INT
+    je .lv_msg
+    lea rcx, [s_a_str]
+    cmp r14d, TY_STR
+    je .lv_msg
+    lea rcx, [s_a_bool]
+.lv_msg:
+    call msg_addz
+    lea rcx, [s_semantic]
+    mov edx, [r12 + S_TOK]
+    call diag_error_tok
 
 .assign:
     mov qword [sm_carry], 0
@@ -1506,3 +1617,9 @@ FUNC intern_tree
     call intern_tree
 .done:
     ENDF
+
+block_is_loop:
+    mov rax, [sm_bdepth]
+    lea rdx, [sm_bkind]
+    cmp qword [rdx + rax * 8 - 8], BK_LOOP
+    ret

@@ -35,7 +35,8 @@ cg_npatch resq 1
 cg_bpatch resq 1
 cg_nbody  resq 1
 cg_bdepth resq 1
-cg_bstack resq 2 * (MAX_BLOCKS + 1)
+cg_bstack resq 8 * (MAX_BLOCKS + 1)
+cg_ldepth resq 1
 
 section .text
 
@@ -84,6 +85,7 @@ FUNC codegen
     mov qword [cg_npatch], 0
     mov qword [cg_nbody], 0
     mov qword [cg_bdepth], 0
+    mov qword [cg_ldepth], 0
     call outline_pass
 .pad:
     call x64_text_offset
@@ -142,6 +144,10 @@ FUNC codegen
     je .out
     cmp word [r12 + S_KIND], SK_IF
     je .if
+    cmp word [r12 + S_KIND], SK_FOR
+    je .loop
+    cmp word [r12 + S_KIND], SK_LOOPS
+    je .loop
 
     mov eax, [r12 + S_VAR]
     shl rax, 5
@@ -266,12 +272,13 @@ FUNC codegen
 
 .if:
     mov rax, [cg_bdepth]
-    shl rax, 4
+    shl rax, 6
     lea rcx, [cg_bstack]
     mov edx, [r12 + S_PIECES]
     mov [rcx + rax], rdx
+    mov qword [rcx + rax + 8], BK_IF
     mov rdx, [cg_npatch]
-    mov [rcx + rax + 8], rdx
+    mov [rcx + rax + 16], rdx
     inc qword [cg_bdepth]
     mov qword [cg_nbody], 0
     mov eax, [r12 + S_PARTS]
@@ -280,6 +287,10 @@ FUNC codegen
     mov edx, 1
     call emit_cond
     call patch_body
+    jmp .next
+
+.loop:
+    call emit_loop_head
     jmp .next
 
 .next:
@@ -885,17 +896,21 @@ patch_body:
 
 close_blocks:
     push rbx
+    push rsi
     mov rbx, rax
 .loop:
     mov rax, [cg_bdepth]
     test rax, rax
     jz .done
     dec rax
-    shl rax, 4
-    lea rcx, [cg_bstack]
-    cmp [rcx + rax], rbx
+    shl rax, 6
+    lea rsi, [cg_bstack]
+    add rsi, rax
+    cmp [rsi], rbx
     jne .done
-    mov r9, [rcx + rax + 8]
+    cmp qword [rsi + 8], BK_IF
+    jne .close_loop
+    mov r9, [rsi + 16]
     mov rcx, [cg_patch]
     mov r10, [cg_npatch]
     push r9
@@ -904,7 +919,13 @@ close_blocks:
     mov [cg_npatch], r9
     dec qword [cg_bdepth]
     jmp .loop
+.close_loop:
+    call emit_loop_tail
+    dec qword [cg_bdepth]
+    dec qword [cg_ldepth]
+    jmp .loop
 .done:
+    pop rsi
     pop rbx
     ret
 
@@ -1160,3 +1181,346 @@ emit_compare:
     pop r13
     pop r12
     ret
+
+%define BK_FOR   3
+%define BK_LOOPS 4
+
+reg_rex:
+    xor eax, eax
+    cmp ecx, 8
+    jb .r
+    mov eax, 1
+.r:
+    ret
+
+emit_reg_short:
+    push rcx
+    call reg_rex
+    test eax, eax
+    jz .no_rex
+    push rdx
+    BYTES 0x41, 1
+    pop rdx
+.no_rex:
+    pop rcx
+    and ecx, 7
+    or ecx, edx
+    mov eax, ecx
+    shl eax, 8
+    or eax, r9d
+    mov r8d, 2
+    jmp x64_bytes
+
+emit_mov_reg_imm:
+    push rdx
+    push rcx
+    call reg_rex
+    test eax, eax
+    jz .no_rex
+    BYTES 0x41, 1
+.no_rex:
+    pop rcx
+    and ecx, 7
+    lea eax, [ecx + 0xB8]
+    mov r8d, 1
+    call x64_bytes
+    pop rdx
+    jmp x64_imm32
+
+emit_rr:
+    push rcx
+    call reg_rex
+    test eax, eax
+    jz .no_rex
+    push r9
+    BYTES 0x45, 1
+    pop r9
+.no_rex:
+    pop rcx
+    and ecx, 7
+    mov eax, ecx
+    shl eax, 3
+    or eax, ecx
+    or eax, 0xC0
+    shl eax, 8
+    or eax, r9d
+    mov r8d, 2
+    jmp x64_bytes
+
+emit_mem_reg:
+    push rdx
+    push rcx
+    call reg_rex
+    shl eax, 2
+    or eax, 0x41
+    pop rcx
+    and ecx, 7
+    shl ecx, 3
+    or ecx, 0x87
+    shl ecx, 16
+    or eax, ecx
+    shl r9d, 8
+    or eax, r9d
+    mov r8d, 3
+    call x64_bytes
+    pop rdx
+    jmp x64_imm32
+
+emit_rel32_back:
+    call x64_text_offset
+    add eax, 4
+    sub ecx, eax
+    mov [rdi], ecx
+    add rdi, 4
+    ret
+
+emit_rel32_fwd:
+    call x64_text_offset
+    mov dword [rdi], 0
+    add rdi, 4
+    ret
+
+patch_initial:
+    mov rax, [rsi + 56]
+    cmp rax, -1
+    je .none
+    push rax
+    call x64_text_offset
+    mov edx, eax
+    pop rax
+    sub edx, eax
+    sub edx, 4
+    mov rcx, [x64_text_base]
+    mov [rcx + rax], edx
+.none:
+    ret
+
+emit_loop_head:
+    push rsi
+    push rbx
+    mov rax, [cg_bdepth]
+    shl rax, 6
+    lea rsi, [cg_bstack]
+    add rsi, rax
+    inc qword [cg_bdepth]
+    mov edx, [r12 + S_PIECES]
+    mov [rsi], rdx
+    mov qword [rsi + 56], -1
+    mov qword [rsi + 8], BK_LOOPS
+    cmp word [r12 + S_KIND], SK_FOR
+    jne .kind_set
+    mov qword [rsi + 8], BK_FOR
+.kind_set:
+    mov rax, [cg_ldepth]
+    inc qword [cg_ldepth]
+    mov ecx, 0xFF
+    cmp rax, MAX_REG_LOOPS
+    jae .reg_set
+    lea rcx, [loop_regs]
+    movzx ecx, byte [rcx + rax]
+.reg_set:
+    mov [rsi + 24], rcx
+    mov eax, [r12 + S_NPIECES]
+    add eax, RT_VARS
+    mov [rsi + 48], rax
+    add eax, 4
+    mov [rsi + 32], rax
+    mov eax, [r12 + S_PARTS]
+    mov rdx, [g_roots]
+    mov ecx, [rdx + rax * 4]
+    push rcx
+    call node_addr
+    pop rcx
+    cmp byte [rax + V_KIND], VK_INT
+    jne .dynamic
+    mov qword [rsi + 40], 0
+    movsxd rdx, dword [rax + V_DATA]
+    mov [rsi + 48], rdx
+    jmp .count_ready
+.dynamic:
+    mov qword [rsi + 40], 1
+    call emit_expr
+.count_ready:
+    cmp qword [rsi + 8], BK_FOR
+    je .for_head
+
+    cmp qword [rsi + 40], 0
+    jne .loops_dyn
+    mov rdx, [rsi + 48]
+    cmp qword [rsi + 24], 0xFF
+    je .loops_const_mem
+    mov rcx, [rsi + 24]
+    call emit_mov_reg_imm
+    jmp .loops_test
+.loops_const_mem:
+    mov ecx, [rsi + 32]
+    OPD 0x87C741, 3, ecx
+    mov rdx, [rsi + 48]
+    call x64_imm32
+    jmp .loops_test
+.loops_dyn:
+    cmp qword [rsi + 24], 0xFF
+    je .loops_dyn_mem
+    mov rcx, [rsi + 24]
+    mov edx, 0xC0
+    mov r9d, 0x89
+    call emit_reg_short
+    jmp .loops_test
+.loops_dyn_mem:
+    mov ecx, [rsi + 32]
+    OPD 0x878941, 3, ecx
+.loops_test:
+    cmp qword [rsi + 40], 0
+    jne .loops_need_test
+    cmp qword [rsi + 48], 0
+    jg .loops_top
+.loops_need_test:
+    cmp qword [rsi + 24], 0xFF
+    je .loops_test_mem
+    mov rcx, [rsi + 24]
+    mov r9d, 0x85
+    call emit_rr
+    jmp .loops_jle
+.loops_test_mem:
+    mov ecx, [rsi + 32]
+    OPD 0xBF8341, 3, ecx
+    BYTES 0x00, 1
+.loops_jle:
+    BYTES 0x8E0F, 2
+    call emit_rel32_fwd
+    mov [rsi + 56], rax
+.loops_top:
+    call x64_text_offset
+    mov [rsi + 16], rax
+    jmp .done
+
+.for_head:
+    cmp qword [rsi + 40], 0
+    je .for_init
+    mov ecx, [rsi + 48]
+    OPD 0x878941, 3, ecx
+.for_init:
+    cmp qword [rsi + 24], 0xFF
+    je .for_init_mem
+    mov rcx, [rsi + 24]
+    mov r9d, 0x31
+    call emit_rr
+    jmp .for_jump
+.for_init_mem:
+    mov ecx, [rsi + 32]
+    OPD 0x87C741, 3, ecx
+    xor edx, edx
+    call x64_imm32
+.for_jump:
+    cmp qword [rsi + 40], 0
+    jne .for_need_jump
+    cmp qword [rsi + 48], 0
+    jg .for_top
+.for_need_jump:
+    BYTES 0xE9, 1
+    call emit_rel32_fwd
+    mov [rsi + 56], rax
+.for_top:
+    call x64_text_offset
+    mov [rsi + 16], rax
+    mov eax, [r12 + S_VAR]
+    shl rax, 5
+    add rax, [g_vars]
+    mov edx, [rax + VR_OFF]
+    add edx, RT_VARS
+    cmp qword [rsi + 24], 0xFF
+    je .for_store_mem
+    mov rcx, [rsi + 24]
+    mov r9d, 0x89
+    call emit_mem_reg
+    jmp .done
+.for_store_mem:
+    push rdx
+    mov ecx, [rsi + 32]
+    OPD 0x878B41, 3, ecx
+    pop r9
+    OPD 0x878941, 3, r9d
+.done:
+    pop rbx
+    pop rsi
+    ret
+
+emit_loop_tail:
+    cmp qword [rsi + 8], BK_FOR
+    jne .loops_tail
+    cmp qword [rsi + 24], 0xFF
+    je .for_inc_mem
+    mov rcx, [rsi + 24]
+    mov edx, 0xC0
+    mov r9d, 0xFF
+    call emit_reg_short
+    jmp .for_check
+.for_inc_mem:
+    mov ecx, [rsi + 32]
+    OPD 0x87FF41, 3, ecx
+.for_check:
+    call patch_initial
+    cmp qword [rsi + 24], 0xFF
+    je .for_cmp_mem
+    cmp qword [rsi + 40], 0
+    jne .for_cmp_reg_slot
+    mov rcx, [rsi + 24]
+    call reg_rex
+    test eax, eax
+    jz .cmp_norex
+    BYTES 0x41, 1
+.cmp_norex:
+    mov rcx, [rsi + 24]
+    and ecx, 7
+    lea eax, [ecx + 0xF8]
+    shl eax, 8
+    or eax, 0x81
+    mov r8d, 2
+    call x64_bytes
+    mov rdx, [rsi + 48]
+    call x64_imm32
+    jmp .jl_back
+.for_cmp_reg_slot:
+    mov rcx, [rsi + 24]
+    mov rdx, [rsi + 48]
+    mov r9d, 0x3B
+    call emit_mem_reg
+    jmp .jl_back
+.for_cmp_mem:
+    cmp qword [rsi + 40], 0
+    jne .for_cmp_mem_slot
+    mov ecx, [rsi + 32]
+    OPD 0xBF8141, 3, ecx
+    mov rdx, [rsi + 48]
+    call x64_imm32
+    jmp .jl_back
+.for_cmp_mem_slot:
+    mov ecx, [rsi + 32]
+    OPD 0x878B41, 3, ecx
+    mov ecx, [rsi + 48]
+    OPD 0x873B41, 3, ecx
+.jl_back:
+    BYTES 0x8C0F, 2
+    mov rcx, [rsi + 16]
+    jmp emit_rel32_back
+
+.loops_tail:
+    cmp qword [rsi + 24], 0xFF
+    je .loops_dec_mem
+    mov rcx, [rsi + 24]
+    mov edx, 0xC8
+    mov r9d, 0xFF
+    call emit_reg_short
+    jmp .loops_jnz
+.loops_dec_mem:
+    mov ecx, [rsi + 32]
+    OPD 0x8FFF41, 3, ecx
+.loops_jnz:
+    BYTES 0x850F, 2
+    mov rcx, [rsi + 16]
+    call emit_rel32_back
+    jmp patch_initial
+
+section .rdata
+loop_regs db 3, 6, 7, 12, 13, 14
+section .text
