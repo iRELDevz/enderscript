@@ -3,15 +3,15 @@ param(
     [string]$Filter = ''
 )
 $ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
-
-$script:passed = 0
-$script:failed = 0
 
 if ($Compiler -eq '') {
     $Compiler = Join-Path (Split-Path $PSScriptRoot -Parent) 'ender.exe'
 }
 $compiler = (Resolve-Path -LiteralPath $Compiler).Path
+Set-Location $PSScriptRoot
+
+$script:passed = 0
+$script:failed = 0
 
 function Normalize-Text([string]$Text) {
     return $Text.Replace("`r`n", "`n")
