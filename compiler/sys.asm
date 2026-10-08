@@ -18,6 +18,7 @@ WINAPI CreateProcessA
 WINAPI WaitForSingleObject
 WINAPI GetExitCodeProcess
 WINAPI CreateDirectoryA
+WINAPI DeleteFileA
 
 section .text
 
@@ -146,6 +147,9 @@ FUNC read_file, 16
 FUNC write_file, 16
     mov r12, rdx
     mov r13, r8
+    mov r14, rcx
+    CALLAPI DeleteFileA
+    mov rcx, r14
     mov edx, 0x40000000
     xor r8d, r8d
     xor r9d, r9d
