@@ -38,3 +38,21 @@ jobs:
       - name: Tests
         shell: pwsh
         run: ./tests/run_tests.ps1 -Compiler ./ender.exe
+      - name: Runtime division by zero
+        shell: pwsh
+        run: |
+          Set-Content -Path divzero.es -Value "a.int = 10`nb.int = 0`nc.int = a / b`n" -NoNewline
+          ./ender.exe build divzero.es
+          ./divzero.exe
+          if ($LASTEXITCODE -ne 1) { exit 1 } else { exit 0 }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: arm64
+      - name: Fuzz arithmetic
+        shell: pwsh
+        run: |
+          foreach ($s in 1..20) {
+            python tests/fuzz_expr.py ./ender.exe $s 400
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }

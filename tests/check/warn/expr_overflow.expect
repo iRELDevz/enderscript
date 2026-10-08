@@ -1,0 +1,2 @@
+expr_overflow.es:1:20: warning: integer overflow in constant expression, the result wraps to -2147483648
+expr_overflow.es:2:15: warning: integer overflow in constant expression, the result wraps to 0

@@ -110,6 +110,65 @@ rt_flush:
 3:  ret
 #endif
 
+rt_div_zero:
+    mov w19, w0
+    bl rt_flush
+    sub sp, sp, #96
+    add x21, sp, #96
+#if defined(TARGET_WINDOWS)
+    mov w9, #0x0A0D
+    strh w9, [x21, #-2]
+    sub x20, x21, #2
+#else
+    mov w9, #10
+    strb w9, [x21, #-1]
+    sub x20, x21, #1
+#endif
+    mov w10, #10
+1:  udiv w11, w19, w10
+    msub w12, w11, w10, w19
+    add w12, w12, #'0'
+    strb w12, [x20, #-1]!
+    mov w19, w11
+    cbnz w19, 1b
+    adr x9, rt_s_divz
+    mov x10, #(rt_s_divz_end - rt_s_divz)
+    sub x20, x20, x10
+    mov x11, #0
+2:  ldrb w12, [x9, x11]
+    strb w12, [x20, x11]
+    add x11, x11, #1
+    cmp x11, x10
+    b.lo 2b
+#if defined(TARGET_WINDOWS)
+    mov w0, #-12
+    ldr x16, [x28, #RT_GETSTD]
+    blr x16
+    mov x1, x20
+    sub x2, x21, x20
+    add x3, x28, #RT_WRITTEN
+    mov x4, #0
+    ldr x16, [x28, #RT_WRITEFILE]
+    blr x16
+    mov w0, #1
+    ldr x16, [x28, #RT_EXIT]
+    blr x16
+#else
+    mov x0, #2
+    mov x1, x20
+    sub x2, x21, x20
+    mov x8, #64
+    svc #0
+    mov x0, #1
+    mov x8, #94
+    svc #0
+#endif
+
+rt_s_divz:
+    .ascii "runtime error: division by zero on line "
+rt_s_divz_end:
+    .p2align 2
+
 rt_end:
 
     .p2align 2
@@ -121,6 +180,7 @@ rt_offsets:
     .word rt_write_bool - rt_start
     .word rt_write_str - rt_start
     .word rt_flush - rt_start
+    .word rt_div_zero - rt_start
 rt_consts:
     .ascii "truefalsenull"
     .byte 0, 0, 0

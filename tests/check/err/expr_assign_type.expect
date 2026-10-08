@@ -1,0 +1,1 @@
+expr_assign_type.es:2:9: type error: cannot assign int to str variable 'b'

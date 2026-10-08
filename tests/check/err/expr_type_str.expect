@@ -1,0 +1,1 @@
+expr_type_str.es:2:11: type error: operator '*' needs int operands, got str

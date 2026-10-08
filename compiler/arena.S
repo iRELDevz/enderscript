@@ -4,7 +4,7 @@
     .p2align 3
     .globl g_src, g_src_len, g_file, g_hout, g_herr, g_envp
     .globl g_tokens, g_ntok, g_stmts, g_nstmt, g_parts, g_nparts
-    .globl g_pieces, g_npieces, g_vars, g_nvars, g_htab, g_hmask
+    .globl g_roots, g_nroots, g_pieces, g_npieces, g_vars, g_nvars, g_htab, g_hmask
     .globl g_pool, g_pool_len, g_vars_size
 g_src:       .zero 8
 g_src_len:   .zero 8
@@ -18,6 +18,8 @@ g_stmts:     .zero 8
 g_nstmt:     .zero 8
 g_parts:     .zero 8
 g_nparts:    .zero 8
+g_roots:     .zero 8
+g_nroots:    .zero 8
 g_pieces:    .zero 8
 g_npieces:   .zero 8
 g_vars:      .zero 8
