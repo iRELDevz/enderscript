@@ -23,6 +23,12 @@ s_outside    db " is outside -2147483648..2147483647", 0
 s_str_long   db "string is longer than 65535 bytes", 0
 s_mode1      db "unknown print mode '.", 0
 s_mode2      db "', expected '.s'", 0
+s_overflow   db "integer overflow in constant expression, the result wraps to ", 0
+s_div_zero   db "division by zero", 0
+s_operator   db "operator '", 0
+s_needs_bin  db "' needs int operands, got ", 0
+s_needs_un   db "' needs an int operand, got ", 0
+op_chars     db " +-*/%-"
 s_tn_int     db "int", 0
 s_tn_str     db "str", 0
 s_tn_bool    db "bool", 0
@@ -97,10 +103,274 @@ new_piece:
     ret
 
 value_pos:
+    cmp byte [rcx + V_KIND], VK_EXPR
+    jne .leaf
+    cmp byte [rcx + V_NEG], OP_NEG
+    je .neg
+    mov eax, [rcx + V_DATA]
+    shl rax, 4
+    add rax, [g_parts]
+    mov rcx, rax
+    jmp value_pos
+.neg:
+    mov edx, [rcx + V_TOK]
+    ret
+.leaf:
     movzx eax, byte [rcx + V_NEG]
     mov edx, [rcx + V_TOK]
     sub edx, eax
     ret
+
+node_ptr:
+    mov eax, ecx
+    shl rax, 4
+    add rax, [g_parts]
+    ret
+
+set_const:
+    mov rcx, rbx
+    call value_pos
+    mov byte [rbx + V_KIND], VK_INT
+    mov byte [rbx + V_NEG], 0
+    mov byte [rbx + V_BAD], 0
+    mov [rbx + V_TOK], edx
+    mov [rbx + V_DATA], r10
+    ret
+
+copy_node:
+    mov rax, [rcx]
+    mov [rbx], rax
+    mov rax, [rcx + 8]
+    mov [rbx + 8], rax
+    ret
+
+FUNC check_expr
+    mov rbx, rcx
+    movzx r12d, byte [rbx + V_NEG]
+    mov ecx, [rbx + V_DATA]
+    call node_ptr
+    mov r13, rax
+    mov rcx, r13
+    call check_value
+    mov r14d, eax
+    mov rcx, r13
+    call value_finish
+    cmp r14d, TY_INT
+    jne .bad_operand
+    cmp r12d, OP_NEG
+    je .unary
+    mov ecx, [rbx + V_DATA + 4]
+    call node_ptr
+    mov r15, rax
+    mov rcx, r15
+    call check_value
+    mov r14d, eax
+    mov rcx, r15
+    call value_finish
+    cmp r14d, TY_INT
+    jne .bad_operand
+    xor esi, esi
+    cmp byte [r13 + V_KIND], VK_INT
+    jne .left_done
+    or esi, 1
+.left_done:
+    cmp byte [r15 + V_KIND], VK_INT
+    jne .right_done
+    or esi, 2
+.right_done:
+    mov r8, [r13 + V_DATA]
+    mov r9, [r15 + V_DATA]
+    test esi, 2
+    jz .no_zero_check
+    test r9, r9
+    jnz .no_zero_check
+    cmp r12d, OP_DIV
+    je .div_zero
+    cmp r12d, OP_MOD
+    je .div_zero
+.no_zero_check:
+    cmp esi, 3
+    je .fold
+    test esi, 2
+    jnz .right_const
+    test esi, 1
+    jnz .left_const
+    jmp .int_result
+
+.right_const:
+    cmp r12d, OP_ADD
+    je .r_add_sub
+    cmp r12d, OP_SUB
+    je .r_add_sub
+    cmp r12d, OP_MUL
+    je .r_mul
+    cmp r12d, OP_DIV
+    je .r_div
+    jmp .r_mod
+.r_add_sub:
+    test r9, r9
+    jz .take_left
+    jmp .int_result
+.r_mul:
+    test r9, r9
+    jnz .r_div
+    cmp byte [r13 + V_KIND], VK_VAR
+    je .make_zero
+    jmp .int_result
+.r_div:
+    cmp r9, 1
+    je .take_left
+    cmp r9, -1
+    jne .int_result
+    mov rcx, r13
+    call value_pos
+    mov [rbx + V_TOK], edx
+    mov byte [rbx + V_NEG], OP_NEG
+    mov dword [rbx + V_DATA + 4], NO_EXPR
+    jmp .int_result
+.r_mod:
+    cmp byte [r13 + V_KIND], VK_VAR
+    jne .int_result
+    cmp r9, 1
+    je .make_zero
+    cmp r9, -1
+    je .make_zero
+    jmp .int_result
+
+.left_const:
+    cmp r12d, OP_ADD
+    je .l_add
+    cmp r12d, OP_SUB
+    je .l_sub
+    cmp r12d, OP_MUL
+    jne .int_result
+    test r8, r8
+    jnz .l_mul_one
+    cmp byte [r15 + V_KIND], VK_VAR
+    je .make_zero
+    jmp .int_result
+.l_mul_one:
+    cmp r8, 1
+    je .take_right
+    jmp .int_result
+.l_add:
+    test r8, r8
+    jz .take_right
+    jmp .int_result
+.l_sub:
+    test r8, r8
+    jnz .int_result
+    mov eax, [r13 + V_TOK]
+    mov [rbx + V_TOK], eax
+    mov eax, [rbx + V_DATA + 4]
+    mov [rbx + V_DATA], eax
+    mov byte [rbx + V_NEG], OP_NEG
+    mov dword [rbx + V_DATA + 4], NO_EXPR
+    jmp .int_result
+
+.take_left:
+    mov rcx, r13
+    call copy_node
+    jmp .int_result
+.take_right:
+    mov rcx, r15
+    call copy_node
+    jmp .int_result
+.make_zero:
+    xor r10d, r10d
+    call set_const
+    jmp .int_result
+
+.unary:
+    cmp byte [r13 + V_KIND], VK_INT
+    jne .int_result
+    mov r10, [r13 + V_DATA]
+    neg r10
+    jmp .fold_store
+
+.fold:
+    mov r10, r8
+    cmp r12d, OP_ADD
+    jne .f_sub
+    add r10, r9
+    jmp .fold_store
+.f_sub:
+    cmp r12d, OP_SUB
+    jne .f_mul
+    sub r10, r9
+    jmp .fold_store
+.f_mul:
+    cmp r12d, OP_MUL
+    jne .f_div
+    imul r10, r9
+    jmp .fold_store
+.f_div:
+    mov rax, r8
+    cqo
+    idiv r9
+    mov r10, rax
+    cmp r12d, OP_DIV
+    je .fold_store
+    mov r10, rdx
+.fold_store:
+    movsxd rax, r10d
+    cmp rax, r10
+    je .fold_ok
+    mov r10, rax
+    push r10
+    push r10
+    call msg_reset
+    lea rcx, [s_overflow]
+    call msg_addz
+    mov r10, [rsp]
+    test r10, r10
+    jns .ov_pos
+    mov cl, '-'
+    call msg_addc
+    mov r10, [rsp]
+    neg r10
+.ov_pos:
+    mov rcx, r10
+    call msg_addu
+    mov ecx, [rbx + V_TOK]
+    call diag_warn_tok
+    pop r10
+    pop r10
+.fold_ok:
+    call set_const
+
+.int_result:
+    mov eax, TY_INT
+    ENDF
+
+.div_zero:
+    call msg_reset
+    lea rcx, [s_div_zero]
+    call msg_addz
+    lea rcx, [s_semantic]
+    mov edx, [rbx + V_TOK]
+    call diag_error_tok
+
+.bad_operand:
+    call msg_reset
+    lea rcx, [s_operator]
+    call msg_addz
+    lea rax, [op_chars]
+    mov cl, [rax + r12]
+    call msg_addc
+    lea rcx, [s_needs_bin]
+    cmp r12d, OP_NEG
+    jne .bad_msg
+    lea rcx, [s_needs_un]
+.bad_msg:
+    call msg_addz
+    mov ecx, r14d
+    call type_name
+    mov rcx, rax
+    call msg_addz
+    lea rcx, [s_type]
+    mov edx, [rbx + V_TOK]
+    call diag_error_tok
 
 FUNC var_lookup
     mov r12d, ecx
@@ -207,6 +477,8 @@ FUNC check_value
     je .str
     cmp eax, VK_VAR
     je .var
+    cmp eax, VK_EXPR
+    je .expr
     mov r12d, TY_BOOL
     cmp eax, VK_BOOL
     je .done
@@ -323,6 +595,11 @@ FUNC check_value
     lea rcx, [s_semantic]
     mov edx, [rbx + V_TOK]
     call diag_error_tok
+
+.expr:
+    mov rcx, rbx
+    call check_expr
+    mov r12d, eax
 
 .done:
     mov [rbx + V_TYPE], r12b
@@ -480,7 +757,9 @@ FUNC sema
 .decl_value:
     cmp dword [r12 + S_NPARTS], 0
     je .decl_store
-    mov ecx, [r12 + S_PARTS]
+    mov eax, [r12 + S_PARTS]
+    mov rdx, [g_roots]
+    mov ecx, [rdx + rax * 4]
     shl rcx, 4
     add rcx, [g_parts]
     movzx edx, word [r12 + S_MODE]
@@ -548,9 +827,13 @@ FUNC sema
     mov [r12 + S_MODE], dx
     cmp dword [r12 + S_NPARTS], 0
     je .next
-    mov ecx, [r12 + S_PARTS]
+    mov r14d, edx
+    mov eax, [r12 + S_PARTS]
+    mov rdx, [g_roots]
+    mov ecx, [rdx + rax * 4]
     shl rcx, 4
     add rcx, [g_parts]
+    mov edx, r14d
     mov r8d, [r12 + S_TOK]
     call check_assign
     jmp .next
@@ -585,8 +868,10 @@ FUNC sema
 .part:
     cmp r14d, [r12 + S_NPARTS]
     jae .parts_done
-    mov ebx, [r12 + S_PARTS]
-    add ebx, r14d
+    mov eax, [r12 + S_PARTS]
+    add eax, r14d
+    mov rdx, [g_roots]
+    mov ebx, [rdx + rax * 4]
     shl rbx, 4
     add rbx, [g_parts]
     mov rsi, [g_pool_len]
@@ -596,6 +881,8 @@ FUNC sema
     mov rcx, rbx
     call value_finish
     movzx eax, byte [rbx + V_KIND]
+    cmp eax, VK_EXPR
+    je .part_expr
     cmp eax, VK_VAR
     je .part_var
     cmp eax, VK_INT
@@ -660,6 +947,14 @@ FUNC sema
     je .part_var_add
     mov ecx, PK_STR
 .part_var_add:
+    call new_piece
+    jmp .part_next
+.part_expr:
+    xor r15d, r15d
+    mov rdx, rbx
+    sub rdx, [g_parts]
+    shr rdx, 4
+    mov ecx, PK_EXPR
     call new_piece
 .part_next:
     inc r14d

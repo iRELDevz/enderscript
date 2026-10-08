@@ -15,9 +15,17 @@ s_exp_shr_p   db "expected '>>' after 'print'", 0
 s_exp_shr_s   db "expected '>>' after 'show'", 0
 s_exp_out     db "expected value after '>>'", 0
 s_exp_rbrace  db "expected '}'", 0
+s_exp_rparen  db "expected ')'", 0
+s_too_deep    db "expression is nested more than 1000 levels deep", 0
+s_too_long    db "expression has more than 2000 values and operators", 0
+s_no_float    db "decimal numbers are not supported yet, use int", 0
 s_wrap        db "values next to text must be wrapped in '{ }'", 0
 s_exp_value   db "expected value", 0
 s_exp_number  db "expected number after '-'", 0
+
+section .bss
+alignb 4
+pr_depth resd 1
 
 section .text
 
@@ -55,6 +63,12 @@ FUNC parse
     shl rcx, 4
     call mem_alloc
     mov [g_parts], rax
+    mov rcx, [g_ntok]
+    inc rcx
+    shl rcx, 2
+    call mem_alloc
+    mov [g_roots], rax
+    mov qword [g_nroots], 0
     mov r12, [g_tokens]
     xor r13d, r13d
     xor r15d, r15d
@@ -115,7 +129,8 @@ FUNC parse
     mov word [r14 + S_KIND], SK_ASSIGN
     inc r13
 .value_opt:
-    mov [r14 + S_PARTS], r15d
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
     mov dword [r14 + S_NPARTS], 0
     CUR
     cmp eax, TK_NL
@@ -123,6 +138,7 @@ FUNC parse
     cmp eax, TK_EOF
     je .end_line
     call parse_value
+    call push_root
     mov dword [r14 + S_NPARTS], 1
     jmp .end_line
 
@@ -162,8 +178,9 @@ FUNC parse
 
 .out_body:
     inc r13
-    mov [r14 + S_PARTS], r15d
-    mov rbx, r15
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov rbx, [g_nroots]
     CUR
     cmp eax, TK_NL
     je .out_empty
@@ -179,19 +196,23 @@ FUNC parse
     je .out_done
     cmp eax, TK_STR
     jne .out_not_str
-    call parse_value
+    call parse_string
+    call push_root
     jmp .out_part
 .out_not_str:
     cmp eax, TK_LBRACE
     jne .out_bare
     inc r13
     call parse_value
+    mov edi, eax
     CUR
     cmp eax, TK_RBRACE
-    je .out_rbrace
+    je .out_rbrace_ok
     SYNERR s_exp_rbrace
-.out_rbrace:
+.out_rbrace_ok:
     inc r13
+    mov eax, edi
+    call push_root
     jmp .out_part
 .out_bare:
     cmp eax, TK_INT
@@ -206,14 +227,20 @@ FUNC parse
     je .bare
     cmp eax, TK_IDENT
     je .bare
+    cmp eax, TK_LPAREN
+    je .bare
+    cmp eax, TK_FNUM
+    je .bare
     SYNERR s_exp_eol
 .bare:
-    cmp r15, rbx
+    mov rax, [g_nroots]
+    cmp rax, rbx
     je .bare_first
     SYNERR s_wrap
 .bare_first:
     mov rsi, r13
     call parse_value
+    call push_root
     CUR
     cmp eax, TK_NL
     je .out_done
@@ -222,7 +249,7 @@ FUNC parse
     mov r13, rsi
     SYNERR s_wrap
 .out_done:
-    mov rax, r15
+    mov rax, [g_nroots]
     sub rax, rbx
     mov [r14 + S_NPARTS], eax
 
@@ -259,48 +286,201 @@ FUNC parse
     ENDF
 
 parse_value:
+    mov dword [pr_depth], 0
+    push r15
+    push r13
+    call parse_expr
+    pop rdx
+    pop rcx
+    mov r8, r15
+    sub r8, rcx
+    cmp r8, MAX_NODES
+    ja .too_long
+    ret
+.too_long:
+    mov r13, rdx
+    SYNERR s_too_long
+
+push_root:
+    mov rcx, [g_nroots]
+    mov rdx, [g_roots]
+    mov [rdx + rcx * 4], eax
+    inc qword [g_nroots]
+    ret
+
+new_node:
     mov r10, r15
     shl r10, 4
     add r10, [g_parts]
     mov qword [r10], 0
     mov qword [r10 + 8], 0
+    mov [r10 + V_KIND], cl
+    mov [r10 + V_TOK], edx
+    mov eax, r15d
+    inc r15
+    ret
+
+new_op:
+    push rax
+    mov ecx, VK_EXPR
+    mov edx, r11d
+    call new_node
+    pop rdx
+    mov [r10 + V_NEG], r9b
+    mov [r10 + V_DATA], edx
+    mov [r10 + V_DATA + 4], r8d
+    ret
+
+parse_expr:
+    call parse_term
+.loop:
+    mov r8d, eax
+    CUR
+    mov r9d, OP_ADD
+    cmp eax, TK_PLUS
+    je .op
+    mov r9d, OP_SUB
+    cmp eax, TK_MINUS
+    je .op
+    mov eax, r8d
+    ret
+.op:
+    push r8
+    push r9
+    push r13
+    inc r13
+    call parse_term
+    mov r8d, eax
+    pop r11
+    pop r9
+    pop rax
+    call new_op
+    jmp .loop
+
+parse_term:
+    call parse_factor
+.loop:
+    mov r8d, eax
+    CUR
+    mov r9d, OP_MUL
+    cmp eax, TK_STAR
+    je .op
+    mov r9d, OP_DIV
+    cmp eax, TK_SLASH
+    je .op
+    mov r9d, OP_MOD
+    cmp eax, TK_PERCENT
+    je .op
+    mov eax, r8d
+    ret
+.op:
+    push r8
+    push r9
+    push r13
+    inc r13
+    call parse_factor
+    mov r8d, eax
+    pop r11
+    pop r9
+    pop rax
+    call new_op
+    jmp .loop
+
+parse_factor:
+    inc dword [pr_depth]
+    cmp dword [pr_depth], MAX_DEPTH
+    ja .too_deep
+    CUR
+    cmp eax, TK_MINUS
+    je .minus
+    cmp eax, TK_LPAREN
+    je .paren
+    call parse_primary
+    dec dword [pr_depth]
+    ret
+.minus:
+    mov rax, r13
+    inc rax
+    shl rax, 4
+    add rax, r12
+    movzx eax, word [rax]
+    cmp eax, TK_INT
+    jne .negate
+    inc r13
+    mov ecx, VK_INT
+    mov edx, r13d
+    call new_node
+    mov byte [r10 + V_NEG], 1
+    inc r13
+    dec dword [pr_depth]
+    ret
+.negate:
+    push r13
+    inc r13
+    call parse_factor
+    pop r11
+    mov r9d, OP_NEG
+    mov r8d, NO_EXPR
+    call new_op
+    dec dword [pr_depth]
+    ret
+.paren:
+    inc r13
+    call parse_expr
+    mov r8d, eax
+    CUR
+    cmp eax, TK_RPAREN
+    je .paren_ok
+    SYNERR s_exp_rparen
+.paren_ok:
+    inc r13
+    mov eax, r8d
+    dec dword [pr_depth]
+    ret
+.too_deep:
+    SYNERR s_too_deep
+
+parse_primary:
     CUR
     mov ecx, VK_INT
     cmp eax, TK_INT
-    je .simple
+    je .leaf
     mov ecx, VK_STR
     cmp eax, TK_STR
-    je .simple
+    je .leaf
     mov ecx, VK_NULL
     cmp eax, TK_NULL
-    je .simple
+    je .leaf
     mov ecx, VK_VAR
     cmp eax, TK_IDENT
-    je .simple
+    je .leaf
     cmp eax, TK_TRUE
     je .true
     cmp eax, TK_FALSE
     je .false
-    cmp eax, TK_MINUS
-    je .minus
+    cmp eax, TK_FNUM
+    je .fnum
     SYNERR s_exp_value
 .true:
-    mov qword [r10 + V_DATA], 1
+    mov ecx, VK_BOOL
+    mov edx, r13d
+    call new_node
+    mov dword [r10 + V_DATA], 1
+    inc r13
+    ret
 .false:
     mov ecx, VK_BOOL
-    jmp .simple
-.minus:
+.leaf:
+    mov edx, r13d
+    call new_node
     inc r13
-    CUR
-    cmp eax, TK_INT
-    je .neg_ok
-    SYNERR s_exp_number
-.neg_ok:
-    mov byte [r10 + V_NEG], 1
-    mov ecx, VK_INT
-.simple:
-    mov [r10 + V_KIND], cl
-    mov [r10 + V_TOK], r13d
+    ret
+.fnum:
+    SYNERR s_no_float
+
+parse_string:
+    mov ecx, VK_STR
+    mov edx, r13d
+    call new_node
     inc r13
-    inc r15
     ret
