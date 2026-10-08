@@ -15,6 +15,8 @@ IMPORT g_stmts
 IMPORT g_nstmt
 IMPORT g_parts
 IMPORT g_nparts
+IMPORT g_roots
+IMPORT g_nroots
 IMPORT g_pieces
 IMPORT g_npieces
 IMPORT g_vars

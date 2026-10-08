@@ -10,6 +10,8 @@
 %define OWN_g_nstmt
 %define OWN_g_parts
 %define OWN_g_nparts
+%define OWN_g_roots
+%define OWN_g_nroots
 %define OWN_g_pieces
 %define OWN_g_npieces
 %define OWN_g_vars
@@ -36,6 +38,8 @@ global g_stmts
 global g_nstmt
 global g_parts
 global g_nparts
+global g_roots
+global g_nroots
 global g_pieces
 global g_npieces
 global g_vars
@@ -57,6 +61,8 @@ g_stmts      resd 1
 g_nstmt      resd 1
 g_parts      resd 1
 g_nparts     resd 1
+g_roots      resd 1
+g_nroots     resd 1
 g_pieces     resd 1
 g_npieces    resd 1
 g_vars       resd 1
