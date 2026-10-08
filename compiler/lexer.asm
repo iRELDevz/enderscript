@@ -110,6 +110,21 @@ FUNC lex
     mov ecx, TK_MINUS
     cmp al, '-'
     je .single
+    mov ecx, TK_PLUS
+    cmp al, '+'
+    je .single
+    mov ecx, TK_STAR
+    cmp al, '*'
+    je .single
+    mov ecx, TK_PERCENT
+    cmp al, '%'
+    je .single
+    mov ecx, TK_LPAREN
+    cmp al, '('
+    je .single
+    mov ecx, TK_RPAREN
+    cmp al, ')'
+    je .single
     mov ecx, TK_LBRACE
     cmp al, '{'
     je .single
@@ -154,9 +169,16 @@ FUNC lex
 .slash:
     lea edx, [esi + 1]
     cmp edx, [lx_end]
-    jae .unexpected
+    jae .slash_one
     cmp byte [edx], '/'
-    jne .unexpected
+    je .comment
+.slash_one:
+    mov ecx, TK_SLASH
+    mov eax, esi
+    mov edx, 1
+    EMIT_TOK
+    inc esi
+    jmp .next
 .comment:
     cmp esi, [lx_end]
     jae .next
@@ -231,10 +253,33 @@ FUNC lex
     cmp byte [esi], '9'
     jbe .num_loop
 .num_end:
+    mov ecx, TK_INT
+    cmp esi, [lx_end]
+    jae .num_emit
+    cmp byte [esi], '.'
+    jne .num_emit
+    lea edx, [esi + 1]
+    cmp edx, [lx_end]
+    jae .num_emit
+    cmp byte [edx], '0'
+    jb .num_emit
+    cmp byte [edx], '9'
+    ja .num_emit
+    inc esi
+.num_frac:
+    inc esi
+    cmp esi, [lx_end]
+    jae .num_float
+    cmp byte [esi], '0'
+    jb .num_float
+    cmp byte [esi], '9'
+    jbe .num_frac
+.num_float:
+    mov ecx, TK_FNUM
+.num_emit:
     mov edx, esi
     mov eax, [lx_start]
     sub edx, eax
-    mov ecx, TK_INT
     EMIT_TOK
     jmp .next
 

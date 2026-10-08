@@ -19,6 +19,13 @@ bits 32
 %define TK_TRUE     16
 %define TK_FALSE    17
 %define TK_NULL     18
+%define TK_PLUS     19
+%define TK_STAR     20
+%define TK_SLASH    21
+%define TK_PERCENT  22
+%define TK_LPAREN   23
+%define TK_RPAREN   24
+%define TK_FNUM     25
 
 %define T_KIND      0
 %define T_COL       2
@@ -37,6 +44,7 @@ bits 32
 %define VK_BOOL     3
 %define VK_NULL     4
 %define VK_VAR      5
+%define VK_EXPR     6
 
 %define V_KIND      0
 %define V_NEG       1
@@ -73,6 +81,14 @@ bits 32
 %define PK_INT      2
 %define PK_BOOL     3
 %define PK_STR      4
+%define PK_EXPR     5
+
+%define OP_ADD      1
+%define OP_SUB      2
+%define OP_MUL      3
+%define OP_DIV      4
+%define OP_MOD      5
+%define OP_NEG      6
 
 %define P_KIND      0
 %define P_A         4
@@ -80,12 +96,17 @@ bits 32
 %define P_SIZE      16
 
 %define NO_TOKEN    0xFFFFFFFF
+%define NO_EXPR     0xFFFFFFFF
+%define MAX_DEPTH   1000
+%define MAX_NODES   2000
 
 %define RT_OUT_LEN    0
 %define RT_STDOUT     4
 %define RT_WRITEFILE  8
 %define RT_CONST      16
 %define RT_WRITTEN    20
+%define RT_GETSTD     24
+%define RT_EXIT       28
 %define RT_BUF        64
 %define RT_BUF_SIZE   65536
 %define RT_VARS       (RT_BUF + RT_BUF_SIZE)
