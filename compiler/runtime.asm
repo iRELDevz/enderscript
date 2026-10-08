@@ -110,6 +110,43 @@ rt_flush:
     add rsp, 56
     ret
 
+rt_div_zero:
+    and rsp, -16
+    mov ebx, edx
+    call rt_flush
+    sub rsp, 128
+    lea r13, [rsp + 128]
+    mov word [r13 - 2], 0x0A0D
+    lea r12, [r13 - 2]
+    mov eax, ebx
+    mov ecx, 10
+.digit:
+    xor edx, edx
+    div ecx
+    add dl, '0'
+    dec r12
+    mov [r12], dl
+    test eax, eax
+    jnz .digit
+    sub r12, rt_s_divz_len
+    mov rdi, r12
+    lea rsi, [rt_s_divz]
+    mov ecx, rt_s_divz_len
+    rep movsb
+    mov ecx, -12
+    call [r15 + RT_GETSTD]
+    mov rcx, rax
+    mov rdx, r12
+    mov r8, r13
+    sub r8, r12
+    lea r9, [rsp + 40]
+    mov qword [rsp + 32], 0
+    call [r15 + RT_WRITEFILE]
+    mov ecx, 1
+    call [r15 + RT_EXIT]
+
+rt_s_divz db "runtime error: division by zero on line "
+rt_s_divz_len equ $ - rt_s_divz
 rt_s_true  db "true"
 rt_s_false db "false"
 rt_s_null  db "null"
@@ -124,3 +161,4 @@ rt_offsets:
     dd rt_write_bool - rt_start
     dd rt_write_str - rt_start
     dd rt_flush - rt_start
+    dd rt_div_zero - rt_start
