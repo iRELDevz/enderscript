@@ -159,6 +159,12 @@ FUNC lex
 .newline:
     mov ecx, TK_NL
     mov eax, esi
+    cmp eax, ebx
+    jbe .nl_emit
+    cmp byte [eax - 1], 13
+    jne .nl_emit
+    dec eax
+.nl_emit:
     mov edx, 1
     EMIT_TOK
     inc esi
