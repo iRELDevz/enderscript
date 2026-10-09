@@ -42,6 +42,10 @@ escape_chars db "nt0r\", 34, 39, 96, 0
 section .bss
 alignb 8
 lx_depth   resq 1
+lx_paren   resq 1
+lx_gn      resq 1
+lx_silent  resq 1
+lx_gstack  resq 2 * (MAX_BLOCKS + 1)
 lx_ind_len resq MAX_BLOCKS + 1
 lx_ind_ptr resq MAX_BLOCKS + 1
 
@@ -75,6 +79,9 @@ FUNC lex
     mov [g_tokens], rax
     mov qword [lx_depth], 0
     mov qword [lx_ind_len], 0
+    mov qword [lx_paren], 0
+    mov qword [lx_gn], 0
+    mov qword [lx_silent], 0
     mov rdi, rax
     xor r15d, r15d
     mov rbx, [g_src]
@@ -151,9 +158,12 @@ FUNC lex
     je .single
     mov ecx, TK_LPAREN
     cmp al, '('
-    je .single
+    je .lparen
     mov ecx, TK_RPAREN
     cmp al, ')'
+    je .rparen
+    mov ecx, TK_COMMA
+    cmp al, ','
     je .single
     mov ecx, TK_LBRACE
     cmp al, '{'
@@ -195,6 +205,25 @@ FUNC lex
 .skip:
     inc rsi
     jmp .next
+
+.lparen:
+    inc qword [lx_paren]
+    jmp .single
+
+.rparen:
+    cmp qword [lx_paren], 0
+    je .single
+    dec qword [lx_paren]
+    mov rax, [lx_gn]
+    test rax, rax
+    jz .single
+    shl rax, 4
+    lea rdx, [lx_gstack]
+    mov rdx, [rdx + rax - 16]
+    cmp [lx_paren], rdx
+    jae .single
+    dec qword [lx_gn]
+    jmp .single
 
 .bang:
     lea rdx, [rsi + 1]
@@ -238,6 +267,28 @@ FUNC lex
 .nl_emit:
     mov edx, 1
     EMIT_TOK
+    xor edx, edx
+    mov rax, [lx_gn]
+    test rax, rax
+    jz .group_top
+    shl rax, 4
+    lea rcx, [lx_gstack]
+    mov rdx, [rcx + rax - 16]
+.group_top:
+    cmp [lx_paren], rdx
+    jbe .group_done
+    mov rax, [lx_gn]
+    cmp rax, MAX_BLOCKS
+    jae .group_done
+    shl rax, 4
+    lea rcx, [lx_gstack]
+    mov rdx, [lx_paren]
+    mov [rcx + rax], rdx
+    mov rdx, [lx_depth]
+    mov [rcx + rax + 8], rdx
+    inc qword [lx_gn]
+    mov qword [lx_silent], 1
+.group_done:
     inc rsi
     inc r14d
     mov r13, rsi
@@ -453,6 +504,46 @@ FUNC lex
 .ls_line:
     mov r9, r8
     sub r9, r13
+    cmp qword [lx_silent], 0
+    je .ls_close
+    mov qword [lx_silent], 0
+    mov rax, [lx_depth]
+    cmp rax, MAX_BLOCKS
+    jae .ls_too_deep
+    inc rax
+    mov [lx_depth], rax
+    lea r11, [lx_ind_len]
+    mov [r11 + rax * 8], r9
+    lea r11, [lx_ind_ptr]
+    mov [r11 + rax * 8], r13
+    jmp .next
+.ls_close:
+    mov rax, [lx_gn]
+    test rax, rax
+    jz .ls_normal
+    cmp byte [r8], ')'
+    jne .ls_normal
+    shl rax, 4
+    lea r11, [lx_gstack]
+    mov rdx, [r11 + rax - 16]
+    cmp [lx_paren], rdx
+    jne .ls_normal
+    mov r10, [r11 + rax - 8]
+    cmp [lx_depth], r10
+    jbe .ls_normal
+    inc r10
+.ls_close_pop:
+    cmp [lx_depth], r10
+    jbe .ls_close_silent
+    dec qword [lx_depth]
+    mov ecx, TK_DEDENT
+    xor edx, edx
+    EMIT_TOK
+    jmp .ls_close_pop
+.ls_close_silent:
+    dec qword [lx_depth]
+    jmp .next
+.ls_normal:
     mov rax, [lx_depth]
     lea r11, [lx_ind_len]
     mov r10, [r11 + rax * 8]
@@ -460,6 +551,18 @@ FUNC lex
     je .ls_same
     ja .ls_push
 .ls_pop:
+    mov rdx, [lx_gn]
+    test rdx, rdx
+    jz .ls_pop_ok
+    shl rdx, 4
+    lea r11, [lx_gstack]
+    mov rdx, [r11 + rdx - 8]
+    inc rdx
+    cmp [lx_depth], rdx
+    ja .ls_pop_ok
+    lea rcx, [s_unindent]
+    jmp .indent_error
+.ls_pop_ok:
     dec qword [lx_depth]
     mov ecx, TK_DEDENT
     xor edx, edx
