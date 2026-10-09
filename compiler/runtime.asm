@@ -91,7 +91,7 @@ rt_write_str:
     mov eax, [ecx]
     test eax, eax
     jz .null
-    movzx edx, word [ecx + 4]
+    movzx edx, word [ecx + 8]
     mov ecx, eax
     jmp rt_write
 .null:
@@ -159,6 +159,38 @@ rt_div_zero:
     push 1
     call [ebx + RT_EXIT]
 
+rt_str_eq:
+    push esi
+    push edi
+    mov esi, ecx
+    mov edi, eax
+    mov eax, [esp + 12]
+    test esi, esi
+    jz .a_null
+    test edi, edi
+    jz .no
+    cmp edx, eax
+    jne .no
+    mov ecx, edx
+    repe cmpsb
+    jne .no
+    mov eax, 1
+    pop edi
+    pop esi
+    ret 4
+.a_null:
+    test edi, edi
+    jnz .no
+    mov eax, 1
+    pop edi
+    pop esi
+    ret 4
+.no:
+    xor eax, eax
+    pop edi
+    pop esi
+    ret 4
+
 rt_s_divz db "runtime error: division by zero on line "
 rt_s_divz_len equ $ - rt_s_divz
 
@@ -174,6 +206,7 @@ rt_offsets:
     dd rt_write_str - rt_start
     dd rt_flush - rt_start
     dd rt_div_zero - rt_start
+    dd rt_str_eq - rt_start
 
 rt_consts:
     db "truefalsenull", 0, 0, 0

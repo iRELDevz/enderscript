@@ -70,7 +70,7 @@ FUNC pe_layout
     add eax, FILE_ALIGN
     mov [pe_text_file], eax
     mov ecx, [g_nstmt]
-    shl ecx, 6
+    shl ecx, 8
     mov edx, [g_npieces]
     shl edx, 5
     add ecx, edx
