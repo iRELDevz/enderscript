@@ -1,0 +1,1 @@
+if_type_change.es:3:3: semantic error: variable 'a' is already declared as an int variable

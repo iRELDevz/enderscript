@@ -1,0 +1,3 @@
+loops(a,
+print>>"x"
+)

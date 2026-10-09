@@ -1,0 +1,1 @@
+if_lt_str.es:2:6: type error: operator '<' needs int operands, got str

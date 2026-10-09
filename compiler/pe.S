@@ -88,7 +88,7 @@ FUNC img_layout
     STX x9, img_iat_va
 
     LDX x0, g_nstmt
-    lsl x0, x0, #7
+    lsl x0, x0, #9
     LDX x9, g_npieces
     add x0, x0, x9, lsl #6
     LDX x9, g_nparts

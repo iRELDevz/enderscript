@@ -45,3 +45,8 @@ jobs:
           test $? -eq 1
       - name: Fuzz arithmetic
         run: for s in $(seq 1 20); do python3 tests/fuzz_expr.py ./ender $s 400 || exit 1; done
+      - name: Fuzz language
+        run: |
+          for f in fuzz_loop fuzz_if fuzz_bl fuzz_divis fuzz_simd fuzz_range fuzz_ja; do
+            for s in $(seq 1 25); do python3 tests/$f.py ./ender $s || exit 1; done
+          done

@@ -110,6 +110,24 @@ rt_flush:
 3:  ret
 #endif
 
+rt_str_eq:
+    cbz x0, 3f
+    cbz x2, 2f
+    cmp x1, x3
+    b.ne 2f
+1:  cbz x1, 4f
+    ldrb w9, [x0], #1
+    ldrb w10, [x2], #1
+    cmp w9, w10
+    b.ne 2f
+    sub x1, x1, #1
+    b 1b
+3:  cbnz x2, 2f
+4:  mov w0, #1
+    ret
+2:  mov w0, #0
+    ret
+
 rt_div_zero:
     mov w19, w0
     bl rt_flush
@@ -181,6 +199,7 @@ rt_offsets:
     .word rt_write_str - rt_start
     .word rt_flush - rt_start
     .word rt_div_zero - rt_start
+    .word rt_str_eq - rt_start
 rt_consts:
     .ascii "truefalsenull"
     .byte 0, 0, 0

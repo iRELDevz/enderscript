@@ -1,14 +1,40 @@
 #include "defs.h"
 
+
     RODATA
-s_lexical:   .asciz "lexical"
-s_unexp_ch:  .asciz "unexpected character '"
-s_unexp_by:  .asciz "unexpected byte 0x"
-s_unterm:    .asciz "unterminated string"
-s_unk_esc:   .asciz "unknown escape '\\"
-s_name_long: .asciz "variable name is longer than 64 characters"
-s_quote:     .asciz "'"
-hex_digits:  .ascii "0123456789ABCDEF"
+s_lexical:
+    .ascii "lexical"
+    .byte 0
+s_unexp_ch:
+    .ascii "unexpected character '"
+    .byte 0
+s_unexp_by:
+    .ascii "unexpected byte 0x"
+    .byte 0
+s_unterm:
+    .ascii "unterminated string"
+    .byte 0
+s_unk_esc:
+    .ascii "unknown escape '\\"
+    .byte 0
+s_name_long:
+    .ascii "variable name is longer than 64 characters"
+    .byte 0
+s_quote:
+    .ascii "'"
+    .byte 0
+s_mixed:
+    .ascii "inconsistent use of tabs and spaces in indentation"
+    .byte 0
+s_unindent:
+    .ascii "unindent does not match any outer indentation level"
+    .byte 0
+s_too_nest:
+    .ascii "blocks are nested more than 100 levels deep"
+    .byte 0
+hex_digits:
+    .ascii "0123456789ABCDEF"
+
 keywords:
     .byte 5, TK_PRINT
     .ascii "print"
@@ -26,372 +52,1365 @@ keywords:
     .ascii "false"
     .byte 4, TK_NULL
     .ascii "null"
+    .byte 2, TK_IF
+    .ascii "if"
+    .byte 2, TK_IS
+    .ascii "is"
+    .byte 5, TK_ISNOT
+    .ascii "isnot"
+    .byte 2, TK_OR
+    .ascii "or"
+    .byte 3, TK_AND
+    .ascii "and"
+    .byte 3, TK_FOR
+    .ascii "for"
+    .byte 2, TK_IN
+    .ascii "in"
+    .byte 5, TK_RANGE
+    .ascii "range"
+    .byte 5, TK_LOOPS
+    .ascii "loops"
+    .byte 4, TK_ELSE
+    .ascii "else"
+    .byte 4, TK_ELIF
+    .ascii "elif"
     .byte 0
-escape_chars: .asciz "nt0r\\\"'`"
+
+    .globl escape_chars
+escape_chars:
+    .ascii "nt0r\\"
+    .byte 34, 39, 96, 0
+
+    .bss
+    .p2align 3
+lx_depth:
+    .zero (1) * 8
+lx_paren:
+    .zero (1) * 8
+lx_gn:
+    .zero (1) * 8
+lx_silent:
+    .zero (1) * 8
+lx_gstack:
+    .zero (2 * (MAX_BLOCKS + 1)) * 8
+lx_ind_len:
+    .zero (MAX_BLOCKS + 1) * 8
+lx_ind_ptr:
+    .zero (MAX_BLOCKS + 1) * 8
 
     .text
 
-.macro EMIT_TOK
-    strh w9, [x24, #T_KIND]
-    sub x12, x10, x22
-    add x12, x12, #1
-    mov x13, #65535
-    cmp x12, x13
-    csel x12, x12, x13, ls
-    strh w12, [x24, #T_COL]
-    str w23, [x24, #T_LINE]
-    sub x12, x10, x19
-    str w12, [x24, #T_OFF]
-    str w11, [x24, #T_LEN]
-    add x24, x24, #16
-.endm
 
 FUNC lex
-    LDX x0, g_src_len
-    add x0, x0, #2
-    lsl x0, x0, #4
+    adrp x8, g_src_len
+    add x8, x8, :lo12:g_src_len
+    ldr x16, [x8]
+    mov x10, x16
+    lsl x17, x10, #1
+    mov x10, x17
+    adds x10, x10, #256
+    lsl x17, x10, #4
+    mov x10, x17
+    mov x0, x10
     bl mem_alloc
-    STX x0, g_tokens
-    mov x24, x0
-    LDX x19, g_src
+    mov x9, x0
+    adrp x8, g_tokens
+    add x8, x8, :lo12:g_tokens
+    str x9, [x8]
+    mov x17, #0
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x17, [x8]
+    mov x17, #0
+    adrp x8, lx_ind_len
+    add x8, x8, :lo12:lx_ind_len
+    str x17, [x8]
+    mov x17, #0
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    str x17, [x8]
+    mov x17, #0
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    str x17, [x8]
+    mov x17, #0
+    adrp x8, lx_silent
+    add x8, x8, :lo12:lx_silent
+    str x17, [x8]
+    mov x21, x9
+    eor w26, w26, w26
+    adrp x8, g_src
+    add x8, x8, :lo12:g_src
+    ldr x16, [x8]
+    mov x19, x16
     mov x20, x19
-    LDX x9, g_src_len
-    add x21, x19, x9
-    mov x22, x19
-    mov w23, #1
+    mov x23, x19
+    adrp x8, g_src_len
+    add x8, x8, :lo12:g_src_len
+    ldr x16, [x8]
+    adds x23, x23, x16
+    mov x24, x19
+    mov w25, #1
+    b .Llex_line_start
 
-.Llx_next:
-    cmp x20, x21
-    b.hs .Llx_eof
-    ldrb w0, [x20]
-    cmp w0, #' '
-    b.eq .Llx_skip
-    cmp w0, #9
-    b.eq .Llx_skip
-    cmp w0, #13
-    b.eq .Llx_skip
-    cmp w0, #10
-    b.eq .Llx_newline
-    cmp w0, #'/'
-    b.eq .Llx_slash
-    cmp w0, #'_'
-    b.eq .Llx_ident
-    orr w1, w0, #0x20
-    cmp w1, #'a'
-    b.lo .Llx_not_alpha
-    cmp w1, #'z'
-    b.ls .Llx_ident
-.Llx_not_alpha:
-    cmp w0, #'0'
-    b.lo .Llx_not_digit
-    cmp w0, #'9'
-    b.ls .Llx_number
-.Llx_not_digit:
-    cmp w0, #'"'
-    b.eq .Llx_string
-    cmp w0, #39
-    b.eq .Llx_string
-    cmp w0, #96
-    b.eq .Llx_string
-    mov w9, #TK_DOT
-    cmp w0, #'.'
-    b.eq .Llx_single
-    mov w9, #TK_EQ
-    cmp w0, #'='
-    b.eq .Llx_single
-    mov w9, #TK_MINUS
-    cmp w0, #'-'
-    b.eq .Llx_single
-    mov w9, #TK_PLUS
-    cmp w0, #'+'
-    b.eq .Llx_single
-    mov w9, #TK_STAR
-    cmp w0, #'*'
-    b.eq .Llx_single
-    mov w9, #TK_PERCENT
-    cmp w0, #'%'
-    b.eq .Llx_single
-    mov w9, #TK_LPAREN
-    cmp w0, #'('
-    b.eq .Llx_single
-    mov w9, #TK_RPAREN
-    cmp w0, #')'
-    b.eq .Llx_single
-    mov w9, #TK_LBRACE
-    cmp w0, #'{'
-    b.eq .Llx_single
-    mov w9, #TK_RBRACE
-    cmp w0, #'}'
-    b.eq .Llx_single
-    cmp w0, #'>'
-    b.ne .Llx_unexpected
-    add x1, x20, #1
-    cmp x1, x21
-    b.hs .Llx_unexpected
-    ldrb w1, [x1]
-    cmp w1, #'>'
-    b.ne .Llx_unexpected
-    mov w9, #TK_SHR
-    mov x10, x20
+.Llex_next:
+    cmp x20, x23
+    b.hs .Llex_eof
+    ldurb w9, [x20, #0]
+    and w16, w9, #0xff
+    cmp w16, #32
+    b.eq .Llex_skip
+    and w16, w9, #0xff
+    cmp w16, #9
+    b.eq .Llex_skip
+    and w16, w9, #0xff
+    cmp w16, #13
+    b.eq .Llex_skip
+    and w16, w9, #0xff
+    cmp w16, #10
+    b.eq .Llex_newline
+    and w16, w9, #0xff
+    cmp w16, #47
+    b.eq .Llex_slash
+    and w16, w9, #0xff
+    cmp w16, #95
+    b.eq .Llex_ident
+    mov w10, w9
+    mov w16, #32
+    orr w10, w10, w16
+    cmp w10, #97
+    b.lo .Llex_not_alpha
+    cmp w10, #122
+    b.ls .Llex_ident
+.Llex_not_alpha:
+    and w16, w9, #0xff
+    cmp w16, #48
+    b.lo .Llex_not_digit
+    and w16, w9, #0xff
+    cmp w16, #57
+    b.ls .Llex_number
+.Llex_not_digit:
+    and w16, w9, #0xff
+    cmp w16, #34
+    b.eq .Llex_string
+    and w16, w9, #0xff
+    cmp w16, #39
+    b.eq .Llex_string
+    and w16, w9, #0xff
+    cmp w16, #96
+    b.eq .Llex_string
+    mov w10, #5
+    and w16, w9, #0xff
+    cmp w16, #46
+    b.eq .Llex_single
+    mov w10, #6
+    and w16, w9, #0xff
+    cmp w16, #61
+    b.ne .Llex_not_eq
+    add x11, x20, #1
+    cmp x11, x23
+    b.hs .Llex_single
+    ldurb w16, [x11, #0]
+    cmp w16, #61
+    b.ne .Llex_single
+    mov w10, #27
+    mov x12, x20
     mov w11, #2
-    EMIT_TOK
-    add x20, x20, #2
-    b .Llx_next
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m1_col_ok
+    mov w9, #65535
+.Llex_m1_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adds x20, x20, #2
+    b .Llex_next
+.Llex_not_eq:
+    mov w10, #7
+    and w16, w9, #0xff
+    cmp w16, #45
+    b.eq .Llex_single
+    mov w10, #19
+    and w16, w9, #0xff
+    cmp w16, #43
+    b.eq .Llex_single
+    mov w10, #20
+    and w16, w9, #0xff
+    cmp w16, #42
+    b.eq .Llex_single
+    mov w10, #22
+    and w16, w9, #0xff
+    cmp w16, #37
+    b.eq .Llex_single
+    mov w10, #23
+    and w16, w9, #0xff
+    cmp w16, #40
+    b.eq .Llex_lparen
+    mov w10, #24
+    and w16, w9, #0xff
+    cmp w16, #41
+    b.eq .Llex_rparen
+    mov w10, #44
+    and w16, w9, #0xff
+    cmp w16, #44
+    b.eq .Llex_single
+    mov w10, #9
+    and w16, w9, #0xff
+    cmp w16, #123
+    b.eq .Llex_single
+    mov w10, #10
+    and w16, w9, #0xff
+    cmp w16, #125
+    b.eq .Llex_single
+    mov w10, #32
+    and w16, w9, #0xff
+    cmp w16, #58
+    b.eq .Llex_single
+    and w16, w9, #0xff
+    cmp w16, #33
+    b.eq .Llex_bang
+    mov w10, #30
+    and w16, w9, #0xff
+    cmp w16, #60
+    b.ne .Llex_not_lt
+    mov w11, #41
+    b .Llex_maybe_eq
+.Llex_not_lt:
+    and w16, w9, #0xff
+    cmp w16, #62
+    b.ne .Llex_unexpected
+    mov w10, #31
+    add x11, x20, #1
+    cmp x11, x23
+    b.hs .Llex_single
+    ldurb w16, [x11, #0]
+    cmp w16, #61
+    b.ne .Llex_not_ge
+    mov w10, #42
+    b .Llex_two
+.Llex_not_ge:
+    ldurb w16, [x11, #0]
+    cmp w16, #62
+    b.ne .Llex_single
+    mov w10, #8
+    mov x12, x20
+    mov w11, #2
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m2_col_ok
+    mov w9, #65535
+.Llex_m2_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adds x20, x20, #2
+    b .Llex_next
 
-.Llx_skip:
-    add x20, x20, #1
-    b .Llx_next
+.Llex_skip:
+    adds x20, x20, #1
+    b .Llex_next
 
-.Llx_single:
-    mov x10, x20
+.Llex_lparen:
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x17, [x8]
+    adds x17, x17, #1
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    str x17, [x8]
+    b .Llex_single
+
+.Llex_rparen:
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x16, [x8]
+    cmp x16, #0
+    b.eq .Llex_single
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    str x17, [x8]
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x16, [x8]
+    mov x9, x16
+    tst x9, x9
+    b.eq .Llex_single
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, lx_gstack
+    add x8, x8, :lo12:lx_gstack
+    add x11, x8, #0
+    mov x8, x11
+    add x8, x8, x9, lsl #0
+    sub x8, x8, #16
+    ldr x16, [x8]
+    mov x11, x16
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x16, [x8]
+    cmp x16, x11
+    b.hs .Llex_single
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    str x17, [x8]
+    b .Llex_single
+
+.Llex_bang:
+    add x11, x20, #1
+    cmp x11, x23
+    b.hs .Llex_unexpected
+    ldurb w16, [x11, #0]
+    cmp w16, #61
+    b.ne .Llex_unexpected
+    mov w10, #28
+    b .Llex_two
+
+.Llex_maybe_eq:
+    add x12, x20, #1
+    cmp x12, x23
+    b.hs .Llex_single
+    ldurb w16, [x12, #0]
+    cmp w16, #61
+    b.ne .Llex_single
+    mov w10, w11
+
+.Llex_two:
+    mov x12, x20
+    mov w11, #2
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m3_col_ok
+    mov w9, #65535
+.Llex_m3_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adds x20, x20, #2
+    b .Llex_next
+
+.Llex_single:
+    mov x12, x20
     mov w11, #1
-    EMIT_TOK
-    add x20, x20, #1
-    b .Llx_next
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m4_col_ok
+    mov w9, #65535
+.Llex_m4_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adds x20, x20, #1
+    b .Llex_next
 
-.Llx_newline:
-    mov w9, #TK_NL
-    mov x10, x20
-    cmp x10, x22
-    b.ls .Llx_nl_emit
-    ldrb w12, [x10, #-1]
-    cmp w12, #13
-    b.ne .Llx_nl_emit
-    sub x10, x10, #1
-.Llx_nl_emit:
+.Llex_newline:
+    mov w10, #1
+    mov x12, x20
+    cmp x12, x24
+    b.ls .Llex_nl_emit
+    ldurb w16, [x12, #-1]
+    cmp w16, #13
+    b.ne .Llex_nl_emit
+    subs x12, x12, #1
+.Llex_nl_emit:
     mov w11, #1
-    EMIT_TOK
-    add x20, x20, #1
-    add w23, w23, #1
-    mov x22, x20
-    b .Llx_next
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m5_col_ok
+    mov w9, #65535
+.Llex_m5_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    eor w11, w11, w11
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x16, [x8]
+    mov x9, x16
+    tst x9, x9
+    b.eq .Llex_group_top
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, lx_gstack
+    add x8, x8, :lo12:lx_gstack
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    sub x8, x8, #16
+    ldr x16, [x8]
+    mov x11, x16
+.Llex_group_top:
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x16, [x8]
+    cmp x16, x11
+    b.ls .Llex_group_done
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x16, [x8]
+    mov x9, x16
+    cmp x9, #100
+    b.hs .Llex_group_done
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, lx_gstack
+    add x8, x8, :lo12:lx_gstack
+    add x10, x8, #0
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    str x11, [x8]
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    add x8, x8, #8
+    str x11, [x8]
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x17, [x8]
+    adds x17, x17, #1
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    str x17, [x8]
+    mov x17, #1
+    adrp x8, lx_silent
+    add x8, x8, :lo12:lx_silent
+    str x17, [x8]
+.Llex_group_done:
+    adds x20, x20, #1
+    adds w25, w25, #1
+    mov x24, x20
+    b .Llex_line_start
 
-.Llx_slash:
-    add x1, x20, #1
-    cmp x1, x21
-    b.hs .Llx_slash_one
-    ldrb w1, [x1]
-    cmp w1, #'/'
-    b.eq .Llx_comment
-.Llx_slash_one:
-    mov w9, #TK_SLASH
-    mov x10, x20
+.Llex_slash:
+    add x11, x20, #1
+    cmp x11, x23
+    b.hs .Llex_slash_one
+    ldurb w16, [x11, #0]
+    cmp w16, #47
+    b.eq .Llex_comment
+.Llex_slash_one:
+    mov w10, #21
+    mov x12, x20
     mov w11, #1
-    EMIT_TOK
-    add x20, x20, #1
-    b .Llx_next
-.Llx_comment:
-    cmp x20, x21
-    b.hs .Llx_next
-    ldrb w1, [x20]
-    cmp w1, #10
-    b.eq .Llx_next
-    add x20, x20, #1
-    b .Llx_comment
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m6_col_ok
+    mov w9, #65535
+.Llex_m6_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adds x20, x20, #1
+    b .Llex_next
+.Llex_comment:
+    cmp x20, x23
+    b.hs .Llex_next
+    ldurb w16, [x20, #0]
+    cmp w16, #10
+    b.eq .Llex_next
+    adds x20, x20, #1
+    b .Llex_comment
 
-.Llx_ident:
-    mov x25, x20
-.Llx_ident_loop:
-    add x20, x20, #1
-    cmp x20, x21
-    b.hs .Llx_ident_end
-    ldrb w0, [x20]
-    cmp w0, #'_'
-    b.eq .Llx_ident_loop
-    cmp w0, #'0'
-    b.lo .Llx_ident_alpha
-    cmp w0, #'9'
-    b.ls .Llx_ident_loop
-.Llx_ident_alpha:
-    orr w0, w0, #0x20
-    cmp w0, #'a'
-    b.lo .Llx_ident_end
-    cmp w0, #'z'
-    b.ls .Llx_ident_loop
-.Llx_ident_end:
-    sub x11, x20, x25
+.Llex_ident:
+    mov x12, x20
+.Llex_ident_loop:
+    adds x20, x20, #1
+    cmp x20, x23
+    b.hs .Llex_ident_end
+    ldurb w9, [x20, #0]
+    and w16, w9, #0xff
+    cmp w16, #95
+    b.eq .Llex_ident_loop
+    and w16, w9, #0xff
+    cmp w16, #48
+    b.lo .Llex_ident_alpha
+    and w16, w9, #0xff
+    cmp w16, #57
+    b.ls .Llex_ident_loop
+.Llex_ident_alpha:
+    and w17, w9, #0xff
+    mov w16, #32
+    orr w17, w17, w16
+    bfi x9, x17, #0, #8
+    and w16, w9, #0xff
+    cmp w16, #97
+    b.lo .Llex_ident_end
+    and w16, w9, #0xff
+    cmp w16, #122
+    b.ls .Llex_ident_loop
+.Llex_ident_end:
+    mov x11, x20
+    subs x11, x11, x12
     cmp x11, #64
-    b.hi .Llx_name_long
-    LA x1, keywords
-.Llx_kw_loop:
-    ldrb w2, [x1]
-    cbz w2, .Llx_kw_none
-    cmp w2, w11
-    b.ne .Llx_kw_next
-    mov x3, #0
-.Llx_kw_cmp:
-    add x4, x1, #2
-    ldrb w5, [x4, x3]
-    ldrb w6, [x25, x3]
-    cmp w5, w6
-    b.ne .Llx_kw_next
-    add x3, x3, #1
-    cmp x3, x11
-    b.lo .Llx_kw_cmp
-    ldrb w9, [x1, #1]
-    b .Llx_kw_emit
-.Llx_kw_next:
-    add x1, x1, #2
-    add x1, x1, x2
-    b .Llx_kw_loop
-.Llx_kw_none:
-    mov w9, #TK_IDENT
-.Llx_kw_emit:
-    mov x10, x25
-    EMIT_TOK
-    b .Llx_next
+    b.hi .Llex_name_long
+    adrp x8, keywords
+    add x8, x8, :lo12:keywords
+    add x13, x8, #0
+.Llex_kw_loop:
+    ldurb w9, [x13, #0]
+    tst w9, w9
+    b.eq .Llex_kw_none
+    cmp w9, w11
+    b.ne .Llex_kw_next
+    eor w14, w14, w14
+.Llex_kw_cmp:
+    mov x8, x13
+    add x8, x8, x14, lsl #0
+    add x8, x8, #2
+    ldr w17, [x8]
+    bfi x15, x17, #0, #8
+    and w16, w15, #0xff
+    mov x8, x12
+    add x8, x8, x14, lsl #0
+    ldr w17, [x8]
+    cmp w16, w17
+    b.ne .Llex_kw_next
+    adds w14, w14, #1
+    cmp w14, w11
+    b.lo .Llex_kw_cmp
+    ldurb w10, [x13, #1]
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m7_col_ok
+    mov w9, #65535
+.Llex_m7_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_next
+.Llex_kw_next:
+    mov x8, x13
+    add x8, x8, x9, lsl #0
+    add x8, x8, #2
+    add x13, x8, #0
+    b .Llex_kw_loop
+.Llex_kw_none:
+    mov w10, #2
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m8_col_ok
+    mov w9, #65535
+.Llex_m8_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_next
 
-.Llx_number:
-    mov x25, x20
-.Llx_num_loop:
-    add x20, x20, #1
-    cmp x20, x21
-    b.hs .Llx_num_end
-    ldrb w0, [x20]
-    cmp w0, #'0'
-    b.lo .Llx_num_end
-    cmp w0, #'9'
-    b.ls .Llx_num_loop
-.Llx_num_end:
-    mov w9, #TK_INT
-    cmp x20, x21
-    b.hs .Llx_num_emit
-    ldrb w0, [x20]
-    cmp w0, #'.'
-    b.ne .Llx_num_emit
-    add x1, x20, #1
-    cmp x1, x21
-    b.hs .Llx_num_emit
-    ldrb w0, [x1]
-    cmp w0, #'0'
-    b.lo .Llx_num_emit
-    cmp w0, #'9'
-    b.hi .Llx_num_emit
-    add x20, x20, #1
-.Llx_num_frac:
-    add x20, x20, #1
-    cmp x20, x21
-    b.hs .Llx_num_float
-    ldrb w0, [x20]
-    cmp w0, #'0'
-    b.lo .Llx_num_float
-    cmp w0, #'9'
-    b.ls .Llx_num_frac
-.Llx_num_float:
-    mov w9, #TK_FNUM
-.Llx_num_emit:
-    mov x10, x25
-    sub x11, x20, x25
-    EMIT_TOK
-    b .Llx_next
+.Llex_number:
+    mov x12, x20
+.Llex_num_loop:
+    adds x20, x20, #1
+    cmp x20, x23
+    b.hs .Llex_num_end
+    ldurb w16, [x20, #0]
+    cmp w16, #48
+    b.lo .Llex_num_end
+    ldurb w16, [x20, #0]
+    cmp w16, #57
+    b.ls .Llex_num_loop
+.Llex_num_end:
+    ldurb w16, [x20, #0]
+    cmp w16, #46
+    b.ne .Llex_num_int
+    add x11, x20, #1
+    cmp x11, x23
+    b.hs .Llex_num_int
+    ldurb w16, [x11, #0]
+    cmp w16, #48
+    b.lo .Llex_num_int
+    ldurb w16, [x11, #0]
+    cmp w16, #57
+    b.hi .Llex_num_int
+    adds x20, x20, #1
+.Llex_num_frac:
+    adds x20, x20, #1
+    cmp x20, x23
+    b.hs .Llex_num_float
+    ldurb w16, [x20, #0]
+    cmp w16, #48
+    b.lo .Llex_num_float
+    ldurb w16, [x20, #0]
+    cmp w16, #57
+    b.ls .Llex_num_frac
+.Llex_num_float:
+    mov x11, x20
+    subs x11, x11, x12
+    mov w10, #25
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m9_col_ok
+    mov w9, #65535
+.Llex_m9_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_next
+.Llex_num_int:
+    mov x11, x20
+    subs x11, x11, x12
+    mov w10, #3
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m10_col_ok
+    mov w9, #65535
+.Llex_m10_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_next
 
-.Llx_string:
-    mov x25, x20
-    mov w26, w0
-    add x20, x20, #1
-.Llx_str_loop:
-    cmp x20, x21
-    b.hs .Llx_unterminated
-    ldrb w0, [x20]
-    cmp w0, #10
-    b.eq .Llx_unterminated
-    cmp w0, w26
-    b.eq .Llx_str_end
-    cmp w0, #'\\'
-    b.eq .Llx_str_escape
-    add x20, x20, #1
-    b .Llx_str_loop
-.Llx_str_escape:
-    add x1, x20, #1
-    cmp x1, x21
-    b.hs .Llx_unterminated
-    ldrb w0, [x1]
-    cmp w0, #10
-    b.eq .Llx_unterminated
-    LA x2, escape_chars
-.Llx_esc_find:
-    ldrb w3, [x2], #1
-    cbz w3, .Llx_bad_escape
-    cmp w3, w0
-    b.ne .Llx_esc_find
-    add x20, x20, #2
-    b .Llx_str_loop
-.Llx_str_end:
-    add x20, x20, #1
-    mov w9, #TK_STR
-    mov x10, x25
-    sub x11, x20, x25
-    EMIT_TOK
-    b .Llx_next
+.Llex_string:
+    mov x12, x20
+    and w17, w9, #0xff
+    bfi x13, x17, #0, #8
+    adds x20, x20, #1
+.Llex_str_loop:
+    cmp x20, x23
+    b.hs .Llex_unterminated
+    ldur w17, [x20, #0]
+    bfi x9, x17, #0, #8
+    and w16, w9, #0xff
+    cmp w16, #10
+    b.eq .Llex_unterminated
+    and w16, w9, #0xff
+    and w17, w13, #0xff
+    cmp w16, w17
+    b.eq .Llex_str_end
+    and w16, w9, #0xff
+    cmp w16, #92
+    b.eq .Llex_str_escape
+    adds x20, x20, #1
+    b .Llex_str_loop
+.Llex_str_escape:
+    add x11, x20, #1
+    cmp x11, x23
+    b.hs .Llex_unterminated
+    ldur w17, [x11, #0]
+    bfi x9, x17, #0, #8
+    and w16, w9, #0xff
+    cmp w16, #10
+    b.eq .Llex_unterminated
+    adrp x8, escape_chars
+    add x8, x8, :lo12:escape_chars
+    add x14, x8, #0
+.Llex_esc_find:
+    ldur w17, [x14, #0]
+    bfi x15, x17, #0, #8
+    and w16, w15, #0xff
+    and w17, w15, #0xff
+    tst w16, w17
+    b.eq .Llex_bad_escape
+    and w16, w15, #0xff
+    and w17, w9, #0xff
+    cmp w16, w17
+    b.eq .Llex_esc_ok
+    adds x14, x14, #1
+    b .Llex_esc_find
+.Llex_esc_ok:
+    adds x20, x20, #2
+    b .Llex_str_loop
+.Llex_str_end:
+    adds x20, x20, #1
+    mov x11, x20
+    subs x11, x11, x12
+    mov w10, #4
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m11_col_ok
+    mov w9, #65535
+.Llex_m11_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_next
 
-.Llx_eof:
-    mov w9, #TK_EOF
-    mov x10, x20
-    mov w11, #0
-    EMIT_TOK
-    LDX x9, g_tokens
-    sub x9, x24, x9
-    lsr x9, x9, #4
-    STX x9, g_ntok
-    ENDF
+.Llex_eof:
+    tst x26, x26
+    b.eq .Llex_eof_dedent
+    ldurh w16, [x21, #-16]
+    cmp w16, #1
+    b.eq .Llex_eof_dedent
+    mov w10, #1
+    mov x12, x20
+    eor w11, w11, w11
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m12_col_ok
+    mov w9, #65535
+.Llex_m12_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+.Llex_eof_dedent:
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    cmp x16, #0
+    b.eq .Llex_eof_tok
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x17, [x8]
+    mov w10, #34
+    mov x12, x20
+    eor w11, w11, w11
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m13_col_ok
+    mov w9, #65535
+.Llex_m13_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_eof_dedent
+.Llex_eof_tok:
+    mov w10, #0
+    mov x12, x20
+    eor w11, w11, w11
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m14_col_ok
+    mov w9, #65535
+.Llex_m14_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adrp x8, g_ntok
+    add x8, x8, :lo12:g_ntok
+    str x26, [x8]
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    ret
 
-.Llx_unexpected:
-    mov x27, x20
+.Llex_line_start:
+    mov x12, x20
+.Llex_ls_scan:
+    cmp x12, x23
+    b.hs .Llex_next
+    ldur w17, [x12, #0]
+    bfi x9, x17, #0, #8
+    and w16, w9, #0xff
+    cmp w16, #32
+    b.eq .Llex_ls_ws
+    and w16, w9, #0xff
+    cmp w16, #9
+    b.eq .Llex_ls_ws
+    and w16, w9, #0xff
+    cmp w16, #10
+    b.eq .Llex_next
+    and w16, w9, #0xff
+    cmp w16, #13
+    b.eq .Llex_next
+    and w16, w9, #0xff
+    cmp w16, #47
+    b.ne .Llex_ls_line
+    add x11, x12, #1
+    cmp x11, x23
+    b.hs .Llex_ls_line
+    ldurb w16, [x11, #0]
+    cmp w16, #47
+    b.eq .Llex_next
+    b .Llex_ls_line
+.Llex_ls_ws:
+    adds x12, x12, #1
+    b .Llex_ls_scan
+.Llex_ls_line:
+    mov x13, x12
+    subs x13, x13, x24
+    adrp x8, lx_silent
+    add x8, x8, :lo12:lx_silent
+    ldr x16, [x8]
+    cmp x16, #0
+    b.eq .Llex_ls_close
+    mov x17, #0
+    adrp x8, lx_silent
+    add x8, x8, :lo12:lx_silent
+    str x17, [x8]
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    mov x9, x16
+    cmp x9, #100
+    b.hs .Llex_ls_too_deep
+    adds x9, x9, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x9, [x8]
+    adrp x8, lx_ind_len
+    add x8, x8, :lo12:lx_ind_len
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    str x13, [x8]
+    adrp x8, lx_ind_ptr
+    add x8, x8, :lo12:lx_ind_ptr
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    str x24, [x8]
+    b .Llex_next
+.Llex_ls_close:
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x16, [x8]
+    mov x9, x16
+    tst x9, x9
+    b.eq .Llex_ls_normal
+    ldurb w16, [x12, #0]
+    cmp w16, #41
+    b.ne .Llex_ls_normal
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, lx_gstack
+    add x8, x8, :lo12:lx_gstack
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #0
+    sub x8, x8, #16
+    ldr x16, [x8]
+    mov x11, x16
+    adrp x8, lx_paren
+    add x8, x8, :lo12:lx_paren
+    ldr x16, [x8]
+    cmp x16, x11
+    b.ne .Llex_ls_normal
+    mov x8, x15
+    add x8, x8, x9, lsl #0
+    sub x8, x8, #8
+    ldr x16, [x8]
+    mov x14, x16
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    cmp x16, x14
+    b.ls .Llex_ls_normal
+    adds x14, x14, #1
+.Llex_ls_close_pop:
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    cmp x16, x14
+    b.ls .Llex_ls_close_silent
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x17, [x8]
+    mov w10, #34
+    eor w11, w11, w11
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m15_col_ok
+    mov w9, #65535
+.Llex_m15_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_ls_close_pop
+.Llex_ls_close_silent:
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x17, [x8]
+    b .Llex_next
+.Llex_ls_normal:
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, lx_ind_len
+    add x8, x8, :lo12:lx_ind_len
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    ldr x16, [x8]
+    mov x14, x16
+    cmp x13, x14
+    b.eq .Llex_ls_same
+    b.hi .Llex_ls_push
+.Llex_ls_pop:
+    adrp x8, lx_gn
+    add x8, x8, :lo12:lx_gn
+    ldr x16, [x8]
+    mov x11, x16
+    tst x11, x11
+    b.eq .Llex_ls_pop_ok
+    lsl x17, x11, #4
+    mov x11, x17
+    adrp x8, lx_gstack
+    add x8, x8, :lo12:lx_gstack
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x11, lsl #0
+    sub x8, x8, #8
+    ldr x16, [x8]
+    mov x11, x16
+    adds x11, x11, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    cmp x16, x11
+    b.hi .Llex_ls_pop_ok
+    adrp x8, s_unindent
+    add x8, x8, :lo12:s_unindent
+    add x10, x8, #0
+    b .Llex_indent_error
+.Llex_ls_pop_ok:
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x17, [x8]
+    mov w10, #34
+    eor w11, w11, w11
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m16_col_ok
+    mov w9, #65535
+.Llex_m16_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, lx_ind_len
+    add x8, x8, :lo12:lx_ind_len
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    ldr x16, [x8]
+    mov x14, x16
+    cmp x13, x14
+    b.lo .Llex_ls_pop
+    b.eq .Llex_ls_same
+    adrp x8, s_unindent
+    add x8, x8, :lo12:s_unindent
+    add x10, x8, #0
+    b .Llex_indent_error
+.Llex_ls_push:
+    cmp x9, #100
+    b.hs .Llex_ls_too_deep
+    mov x10, x14
+    bl .Llex_prefix_same
+    b.ne .Llex_ls_mixed
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x17, [x8]
+    adds x17, x17, #1
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    str x17, [x8]
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, lx_ind_len
+    add x8, x8, :lo12:lx_ind_len
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    str x13, [x8]
+    adrp x8, lx_ind_ptr
+    add x8, x8, :lo12:lx_ind_ptr
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    str x24, [x8]
+    mov w10, #33
+    eor w11, w11, w11
+    and w17, w10, #0xffff
+    sturh w17, [x21, #0]
+    mov x9, x12
+    subs x9, x9, x24
+    adds x9, x9, #1
+    mov x17, #65535
+    cmp x9, x17
+    b.ls .Llex_m17_col_ok
+    mov w9, #65535
+.Llex_m17_col_ok:
+    and w17, w9, #0xffff
+    sturh w17, [x21, #2]
+    stur w25, [x21, #4]
+    mov x9, x12
+    subs x9, x9, x19
+    stur w9, [x21, #8]
+    stur w11, [x21, #12]
+    adds x21, x21, #16
+    adds x26, x26, #1
+    b .Llex_next
+.Llex_ls_same:
+    tst x13, x13
+    b.eq .Llex_next
+    mov x10, x13
+    bl .Llex_prefix_same
+    b.ne .Llex_ls_mixed
+    b .Llex_next
+.Llex_ls_mixed:
+    adrp x8, s_mixed
+    add x8, x8, :lo12:s_mixed
+    add x10, x8, #0
+    b .Llex_indent_error
+.Llex_ls_too_deep:
+    adrp x8, s_too_nest
+    add x8, x8, :lo12:s_too_nest
+    add x10, x8, #0
+.Llex_indent_error:
+    mov x23, x24
+    str x10, [sp, #-16]!
     bl msg_reset
-    ldrb w0, [x27]
-    cmp w0, #0x21
-    b.lo .Llx_unexp_byte
-    cmp w0, #0x7E
-    b.hi .Llx_unexp_byte
-    LA x0, s_unexp_ch
+    ldr x10, [sp], #16
+    mov x0, x10
     bl msg_addz
-    ldrb w0, [x27]
-    bl msg_addc
-    LA x0, s_quote
-    bl msg_addz
-    b .Llx_error
-.Llx_unexp_byte:
-    LA x0, s_unexp_by
-    bl msg_addz
-    ldrb w0, [x27]
-    lsr w0, w0, #4
-    LA x9, hex_digits
-    ldrb w0, [x9, x0]
-    bl msg_addc
-    ldrb w0, [x27]
-    and w0, w0, #15
-    LA x9, hex_digits
-    ldrb w0, [x9, x0]
-    bl msg_addc
-    b .Llx_error
+    b .Llex_lex_error
 
-.Llx_unterminated:
-    mov x27, x25
+.Llex_prefix_same:
+    str x30, [sp, #-16]!
+    adrp x8, lx_depth
+    add x8, x8, :lo12:lx_depth
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, lx_ind_ptr
+    add x8, x8, :lo12:lx_ind_ptr
+    add x15, x8, #0
+    mov x8, x15
+    add x8, x8, x9, lsl #3
+    ldr x16, [x8]
+    mov x15, x16
+    eor w11, w11, w11
+.Llex_ps_loop:
+    cmp x11, x10
+    b.hs .Llex_ps_equal
+    mov x8, x24
+    add x8, x8, x11, lsl #0
+    ldr w17, [x8]
+    bfi x9, x17, #0, #8
+    and w16, w9, #0xff
+    mov x8, x15
+    add x8, x8, x11, lsl #0
+    ldr w17, [x8]
+    cmp w16, w17
+    b.ne .Llex_ps_done
+    adds x11, x11, #1
+    b .Llex_ps_loop
+.Llex_ps_equal:
+    cmp w9, w9
+.Llex_ps_done:
+    ldr x30, [sp], #16
+    ret
+
+.Llex_unexpected:
+    mov x23, x20
     bl msg_reset
-    LA x0, s_unterm
+    ldurb w9, [x23, #0]
+    and w16, w9, #0xff
+    cmp w16, #33
+    b.lo .Llex_unexp_byte
+    and w16, w9, #0xff
+    cmp w16, #126
+    b.hi .Llex_unexp_byte
+    adrp x8, s_unexp_ch
+    add x8, x8, :lo12:s_unexp_ch
+    add x10, x8, #0
+    mov x0, x10
     bl msg_addz
-    b .Llx_error
-
-.Llx_bad_escape:
-    mov x27, x20
-    bl msg_reset
-    LA x0, s_unk_esc
-    bl msg_addz
-    ldrb w0, [x27, #1]
+    ldur w17, [x23, #0]
+    bfi x10, x17, #0, #8
+    mov x0, x10
     bl msg_addc
-    LA x0, s_quote
+    adrp x8, s_quote
+    add x8, x8, :lo12:s_quote
+    add x10, x8, #0
+    mov x0, x10
     bl msg_addz
-    b .Llx_error
+    b .Llex_lex_error
+.Llex_unexp_byte:
+    adrp x8, s_unexp_by
+    add x8, x8, :lo12:s_unexp_by
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldurb w9, [x23, #0]
+    lsr w17, w9, #4
+    mov w9, w17
+    adrp x8, hex_digits
+    add x8, x8, :lo12:hex_digits
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    ldr w17, [x8]
+    bfi x10, x17, #0, #8
+    mov x0, x10
+    bl msg_addc
+    ldurb w9, [x23, #0]
+    mov w16, #15
+    ands w9, w9, w16
+    adrp x8, hex_digits
+    add x8, x8, :lo12:hex_digits
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    ldr w17, [x8]
+    bfi x10, x17, #0, #8
+    mov x0, x10
+    bl msg_addc
+    b .Llex_lex_error
 
-.Llx_name_long:
-    mov x27, x25
+.Llex_unterminated:
+    mov x23, x12
     bl msg_reset
-    LA x0, s_name_long
+    adrp x8, s_unterm
+    add x8, x8, :lo12:s_unterm
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    b .Llex_lex_error
+
+.Llex_bad_escape:
+    mov x23, x20
+    bl msg_reset
+    adrp x8, s_unk_esc
+    add x8, x8, :lo12:s_unk_esc
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w17, [x23, #1]
+    bfi x10, x17, #0, #8
+    mov x0, x10
+    bl msg_addc
+    adrp x8, s_quote
+    add x8, x8, :lo12:s_quote
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    b .Llex_lex_error
+
+.Llex_name_long:
+    mov x23, x12
+    bl msg_reset
+    adrp x8, s_name_long
+    add x8, x8, :lo12:s_name_long
+    add x10, x8, #0
+    mov x0, x10
     bl msg_addz
 
-.Llx_error:
-    sub x2, x27, x22
-    add x2, x2, #1
-    mov w1, w23
-    LA x0, s_lexical
+.Llex_lex_error:
+    mov x12, x23
+    subs x12, x12, x24
+    adds x12, x12, #1
+    mov w11, w25
+    adrp x8, s_lexical
+    add x8, x8, :lo12:s_lexical
+    add x10, x8, #0
+    mov x0, x10
+    mov x1, x11
+    mov x2, x12
     bl diag_error_at
+
