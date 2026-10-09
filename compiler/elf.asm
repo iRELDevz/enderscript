@@ -34,7 +34,7 @@ FUNC elf_layout
     add ecx, RT_VARS
     mov [el_data_vsz], ecx
     mov ecx, [g_nstmt]
-    shl ecx, 6
+    shl ecx, 8
     mov edx, [g_npieces]
     shl edx, 5
     add ecx, edx

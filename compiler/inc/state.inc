@@ -37,9 +37,9 @@ IMPORT msg_reset
 IMPORT msg_add
 IMPORT msg_addz
 IMPORT msg_addu
+IMPORT u32_to_dec
 IMPORT msg_addc
 IMPORT msg_tok
-IMPORT u32_to_dec
 IMPORT diag_error_tok
 IMPORT diag_error_at
 IMPORT diag_warn_tok
