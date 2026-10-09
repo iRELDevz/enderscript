@@ -1,5 +1,7 @@
 # EnderScript
 
+[Bahasa Indonesia](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [हिन्दी](README.hi.md)
+
 Repository ini adalah repository original dan awal dari project EnderScript. Repository lain hanya repository pendukung dan tidak bisa diklaim sebagai repository original project EnderScript.
 
 ## Target
