@@ -45,6 +45,7 @@ default rel
 %define TK_LE       41
 %define TK_GE       42
 %define TK_ELIF     43
+%define TK_COMMA    44
 
 %define T_KIND      0
 %define T_COL       2
