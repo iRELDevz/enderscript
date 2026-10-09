@@ -9,6 +9,9 @@ s_unterm    db "unterminated string", 0
 s_unk_esc   db "unknown escape '\", 0
 s_name_long db "variable name is longer than 64 characters", 0
 s_quote     db "'", 0
+s_mixed     db "inconsistent use of tabs and spaces in indentation", 0
+s_unindent  db "unindent does not match any outer indentation level", 0
+s_too_nest  db "blocks are nested more than 100 levels deep", 0
 hex_digits  db "0123456789ABCDEF"
 
 keywords:
@@ -20,10 +23,31 @@ keywords:
     db 4, TK_TRUE,  "true"
     db 5, TK_FALSE, "false"
     db 4, TK_NULL,  "null"
+    db 2, TK_IF,    "if"
+    db 2, TK_IS,    "is"
+    db 5, TK_ISNOT, "isnot"
+    db 2, TK_OR,    "or"
+    db 3, TK_AND,   "and"
+    db 3, TK_FOR,   "for"
+    db 2, TK_IN,    "in"
+    db 5, TK_RANGE, "range"
+    db 5, TK_LOOPS, "loops"
+    db 4, TK_ELSE,  "else"
+    db 4, TK_ELIF,  "elif"
     db 0
 
 global escape_chars
 escape_chars db "nt0r\", 34, 39, 96, 0
+
+section .bss
+alignb 8
+lx_depth   resq 1
+lx_paren   resq 1
+lx_gn      resq 1
+lx_silent  resq 1
+lx_gstack  resq 2 * (MAX_BLOCKS + 1)
+lx_ind_len resq MAX_BLOCKS + 1
+lx_ind_ptr resq MAX_BLOCKS + 1
 
 section .text
 
@@ -48,10 +72,16 @@ section .text
 
 FUNC lex
     mov rcx, [g_src_len]
-    add rcx, 2
+    shl rcx, 1
+    add rcx, 256
     shl rcx, 4
     call mem_alloc
     mov [g_tokens], rax
+    mov qword [lx_depth], 0
+    mov qword [lx_ind_len], 0
+    mov qword [lx_paren], 0
+    mov qword [lx_gn], 0
+    mov qword [lx_silent], 0
     mov rdi, rax
     xor r15d, r15d
     mov rbx, [g_src]
@@ -60,6 +90,7 @@ FUNC lex
     add r12, [g_src_len]
     mov r13, rbx
     mov r14d, 1
+    jmp .line_start
 
 .next:
     cmp rsi, r12
@@ -100,7 +131,19 @@ FUNC lex
     je .single
     mov ecx, TK_EQ
     cmp al, '='
-    je .single
+    jne .not_eq
+    lea rdx, [rsi + 1]
+    cmp rdx, r12
+    jae .single
+    cmp byte [rdx], '='
+    jne .single
+    mov ecx, TK_IS
+    mov r8, rsi
+    mov edx, 2
+    EMIT_TOK
+    add rsi, 2
+    jmp .next
+.not_eq:
     mov ecx, TK_MINUS
     cmp al, '-'
     je .single
@@ -115,9 +158,12 @@ FUNC lex
     je .single
     mov ecx, TK_LPAREN
     cmp al, '('
-    je .single
+    je .lparen
     mov ecx, TK_RPAREN
     cmp al, ')'
+    je .rparen
+    mov ecx, TK_COMMA
+    cmp al, ','
     je .single
     mov ecx, TK_LBRACE
     cmp al, '{'
@@ -125,13 +171,30 @@ FUNC lex
     mov ecx, TK_RBRACE
     cmp al, '}'
     je .single
+    mov ecx, TK_COLON
+    cmp al, ':'
+    je .single
+    cmp al, '!'
+    je .bang
+    mov ecx, TK_LT
+    cmp al, '<'
+    jne .not_lt
+    mov edx, TK_LE
+    jmp .maybe_eq
+.not_lt:
     cmp al, '>'
     jne .unexpected
+    mov ecx, TK_GT
     lea rdx, [rsi + 1]
     cmp rdx, r12
-    jae .unexpected
+    jae .single
+    cmp byte [rdx], '='
+    jne .not_ge
+    mov ecx, TK_GE
+    jmp .two
+.not_ge:
     cmp byte [rdx], '>'
-    jne .unexpected
+    jne .single
     mov ecx, TK_SHR
     mov r8, rsi
     mov edx, 2
@@ -141,6 +204,49 @@ FUNC lex
 
 .skip:
     inc rsi
+    jmp .next
+
+.lparen:
+    inc qword [lx_paren]
+    jmp .single
+
+.rparen:
+    cmp qword [lx_paren], 0
+    je .single
+    dec qword [lx_paren]
+    mov rax, [lx_gn]
+    test rax, rax
+    jz .single
+    shl rax, 4
+    lea rdx, [lx_gstack]
+    mov rdx, [rdx + rax - 16]
+    cmp [lx_paren], rdx
+    jae .single
+    dec qword [lx_gn]
+    jmp .single
+
+.bang:
+    lea rdx, [rsi + 1]
+    cmp rdx, r12
+    jae .unexpected
+    cmp byte [rdx], '='
+    jne .unexpected
+    mov ecx, TK_ISNOT
+    jmp .two
+
+.maybe_eq:
+    lea r8, [rsi + 1]
+    cmp r8, r12
+    jae .single
+    cmp byte [r8], '='
+    jne .single
+    mov ecx, edx
+
+.two:
+    mov r8, rsi
+    mov edx, 2
+    EMIT_TOK
+    add rsi, 2
     jmp .next
 
 .single:
@@ -161,10 +267,32 @@ FUNC lex
 .nl_emit:
     mov edx, 1
     EMIT_TOK
+    xor edx, edx
+    mov rax, [lx_gn]
+    test rax, rax
+    jz .group_top
+    shl rax, 4
+    lea rcx, [lx_gstack]
+    mov rdx, [rcx + rax - 16]
+.group_top:
+    cmp [lx_paren], rdx
+    jbe .group_done
+    mov rax, [lx_gn]
+    cmp rax, MAX_BLOCKS
+    jae .group_done
+    shl rax, 4
+    lea rcx, [lx_gstack]
+    mov rdx, [lx_paren]
+    mov [rcx + rax], rdx
+    mov rdx, [lx_depth]
+    mov [rcx + rax + 8], rdx
+    inc qword [lx_gn]
+    mov qword [lx_silent], 1
+.group_done:
     inc rsi
     inc r14d
     mov r13, rsi
-    jmp .next
+    jmp .line_start
 
 .slash:
     lea rdx, [rsi + 1]
@@ -323,12 +451,183 @@ FUNC lex
     jmp .next
 
 .eof:
+    test r15, r15
+    jz .eof_dedent
+    cmp word [rdi - T_SIZE + T_KIND], TK_NL
+    je .eof_dedent
+    mov ecx, TK_NL
+    mov r8, rsi
+    xor edx, edx
+    EMIT_TOK
+.eof_dedent:
+    cmp qword [lx_depth], 0
+    je .eof_tok
+    dec qword [lx_depth]
+    mov ecx, TK_DEDENT
+    mov r8, rsi
+    xor edx, edx
+    EMIT_TOK
+    jmp .eof_dedent
+.eof_tok:
     mov ecx, TK_EOF
     mov r8, rsi
     xor edx, edx
     EMIT_TOK
     mov [g_ntok], r15
     ENDF
+
+.line_start:
+    mov r8, rsi
+.ls_scan:
+    cmp r8, r12
+    jae .next
+    mov al, [r8]
+    cmp al, ' '
+    je .ls_ws
+    cmp al, 9
+    je .ls_ws
+    cmp al, 10
+    je .next
+    cmp al, 13
+    je .next
+    cmp al, '/'
+    jne .ls_line
+    lea rdx, [r8 + 1]
+    cmp rdx, r12
+    jae .ls_line
+    cmp byte [rdx], '/'
+    je .next
+    jmp .ls_line
+.ls_ws:
+    inc r8
+    jmp .ls_scan
+.ls_line:
+    mov r9, r8
+    sub r9, r13
+    cmp qword [lx_silent], 0
+    je .ls_close
+    mov qword [lx_silent], 0
+    mov rax, [lx_depth]
+    cmp rax, MAX_BLOCKS
+    jae .ls_too_deep
+    inc rax
+    mov [lx_depth], rax
+    lea r11, [lx_ind_len]
+    mov [r11 + rax * 8], r9
+    lea r11, [lx_ind_ptr]
+    mov [r11 + rax * 8], r13
+    jmp .next
+.ls_close:
+    mov rax, [lx_gn]
+    test rax, rax
+    jz .ls_normal
+    cmp byte [r8], ')'
+    jne .ls_normal
+    shl rax, 4
+    lea r11, [lx_gstack]
+    mov rdx, [r11 + rax - 16]
+    cmp [lx_paren], rdx
+    jne .ls_normal
+    mov r10, [r11 + rax - 8]
+    cmp [lx_depth], r10
+    jbe .ls_normal
+    inc r10
+.ls_close_pop:
+    cmp [lx_depth], r10
+    jbe .ls_close_silent
+    dec qword [lx_depth]
+    mov ecx, TK_DEDENT
+    xor edx, edx
+    EMIT_TOK
+    jmp .ls_close_pop
+.ls_close_silent:
+    dec qword [lx_depth]
+    jmp .next
+.ls_normal:
+    mov rax, [lx_depth]
+    lea r11, [lx_ind_len]
+    mov r10, [r11 + rax * 8]
+    cmp r9, r10
+    je .ls_same
+    ja .ls_push
+.ls_pop:
+    mov rdx, [lx_gn]
+    test rdx, rdx
+    jz .ls_pop_ok
+    shl rdx, 4
+    lea r11, [lx_gstack]
+    mov rdx, [r11 + rdx - 8]
+    inc rdx
+    cmp [lx_depth], rdx
+    ja .ls_pop_ok
+    lea rcx, [s_unindent]
+    jmp .indent_error
+.ls_pop_ok:
+    dec qword [lx_depth]
+    mov ecx, TK_DEDENT
+    xor edx, edx
+    EMIT_TOK
+    mov rax, [lx_depth]
+    lea r11, [lx_ind_len]
+    mov r10, [r11 + rax * 8]
+    cmp r9, r10
+    jb .ls_pop
+    je .ls_same
+    lea rcx, [s_unindent]
+    jmp .indent_error
+.ls_push:
+    cmp rax, MAX_BLOCKS
+    jae .ls_too_deep
+    mov rcx, r10
+    call .prefix_same
+    jne .ls_mixed
+    inc qword [lx_depth]
+    mov rax, [lx_depth]
+    lea r11, [lx_ind_len]
+    mov [r11 + rax * 8], r9
+    lea r11, [lx_ind_ptr]
+    mov [r11 + rax * 8], r13
+    mov ecx, TK_INDENT
+    xor edx, edx
+    EMIT_TOK
+    jmp .next
+.ls_same:
+    test r9, r9
+    jz .next
+    mov rcx, r9
+    call .prefix_same
+    jne .ls_mixed
+    jmp .next
+.ls_mixed:
+    lea rcx, [s_mixed]
+    jmp .indent_error
+.ls_too_deep:
+    lea rcx, [s_too_nest]
+.indent_error:
+    mov r12, r13
+    push rcx
+    call msg_reset
+    pop rcx
+    call msg_addz
+    jmp .lex_error
+
+.prefix_same:
+    mov rax, [lx_depth]
+    lea r11, [lx_ind_ptr]
+    mov r11, [r11 + rax * 8]
+    xor edx, edx
+.ps_loop:
+    cmp rdx, rcx
+    jae .ps_equal
+    mov al, [r13 + rdx]
+    cmp al, [r11 + rdx]
+    jne .ps_done
+    inc rdx
+    jmp .ps_loop
+.ps_equal:
+    cmp eax, eax
+.ps_done:
+    ret
 
 .unexpected:
     mov r12, rsi
