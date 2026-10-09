@@ -131,7 +131,11 @@ s_false:
 s_null:
     .ascii "null"
 s_crlf:
+#if defined(TARGET_WINDOWS)
     .byte 13, 10
+#else
+    .byte 10
+#endif
 
     .bss
     .p2align 3
@@ -2068,7 +2072,11 @@ FUNC sema
     adrp x8, s_crlf
     add x8, x8, :lo12:s_crlf
     add x10, x8, #0
+#if defined(TARGET_WINDOWS)
     mov w11, #2
+#else
+    mov w11, #1
+#endif
     bl pool_add
     adrp x8, g_pool_len
     add x8, x8, :lo12:g_pool_len
