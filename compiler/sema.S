@@ -229,7 +229,7 @@ pool_add:
 .Lpool_add_loop:
     tst x11, x11
     b.eq .Lpool_add_end
-    ldur w17, [x10, #0]
+    ldurb w17, [x10, #0]
     bfi x9, x17, #0, #8
     and w17, w9, #0xff
     sturb w17, [x12, #0]
@@ -607,7 +607,7 @@ FUNC check_expr
     add x9, x8, #0
     mov x8, x9
     add x8, x8, x23, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x10, x17, #0, #8
     mov x0, x10
     bl msg_addc
@@ -702,12 +702,12 @@ FUNC var_lookup
     b.hs .Lvar_lookup_found
     mov x8, x9
     add x8, x8, x10, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x12, x17, #0, #8
     and w16, w12, #0xff
     mov x8, x20
     add x8, x8, x10, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     cmp w16, w17
     b.ne .Lvar_lookup_next
     adds x10, x10, #1
@@ -900,13 +900,13 @@ FUNC check_value
 .Lcheck_value_dec:
     cmp x20, x21
     b.hs .Lcheck_value_dec_done
-    ldur w17, [x20, #0]
+    ldurb w17, [x20, #0]
     bfi x9, x17, #0, #8
     adds x20, x20, #1
     and w16, w9, #0xff
     cmp w16, #92
     b.ne .Lcheck_value_dec_put
-    ldur w17, [x20, #0]
+    ldurb w17, [x20, #0]
     bfi x9, x17, #0, #8
     adds x20, x20, #1
     and w16, w9, #0xff
@@ -2486,12 +2486,12 @@ pool_equal:
     b.hs .Lpool_equal_yes
     mov x8, x12
     add x8, x8, x14, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x15, x17, #0, #8
     and w16, w15, #0xff
     mov x8, x13
     add x8, x8, x14, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     cmp w16, w17
     b.ne .Lpool_equal_no
     adds w14, w14, #1
@@ -2790,7 +2790,7 @@ FUNC check_cond
     add x9, x8, #0
     mov x8, x9
     add x8, x8, x23, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x10, x17, #0, #8
     mov x0, x10
     bl msg_addc
