@@ -760,6 +760,8 @@ FUNC sema
     movzx eax, word [r12 + S_KIND]
     cmp eax, SK_IF
     je .if_stmt
+    cmp eax, SK_ELSE
+    je .else_stmt
     cmp eax, SK_FOR
     je .loop_stmt
     cmp eax, SK_LOOPS
@@ -904,6 +906,17 @@ FUNC sema
     shl rcx, 4
     add rcx, [g_parts]
     call check_cond
+    mov rcx, [sm_bdepth]
+    lea rdx, [sm_bstack]
+    mov eax, [r12 + S_PIECES]
+    mov [rdx + rcx * 8], rax
+    lea rdx, [sm_bkind]
+    mov qword [rdx + rcx * 8], BK_IF
+    inc qword [sm_bdepth]
+    jmp .next
+
+.else_stmt:
+    mov qword [sm_carry], 0
     mov rcx, [sm_bdepth]
     lea rdx, [sm_bstack]
     mov eax, [r12 + S_PIECES]

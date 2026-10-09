@@ -21,7 +21,10 @@ s_too_long    db "expression has more than 2000 values and operators", 0
 s_exp_colon   db "expected ':' after the if condition", 0
 s_exp_block   db "expected an indented block after 'if'", 0
 s_unexp_ind   db "unexpected indentation", 0
-s_exp_cmp     db "expected 'is', 'isnot', '<' or '>' in the if condition", 0
+s_exp_cmp     db "expected 'is', '==', 'isnot', '<' or '>' in the if condition", 0
+s_exp_colon_e db "expected ':' after 'else'", 0
+s_exp_blk_els db "expected an indented block after 'else'", 0
+s_else_no_if  db "'else' must follow an 'if' block", 0
 s_too_many_or db "more than 64 values joined with 'or'", 0
 s_exp_loopvar db "expected a variable name after 'for'", 0
 s_exp_in      db "expected 'in' after the loop variable", 0
@@ -41,6 +44,7 @@ alignb 4
 pr_depth resd 1
 alignb 8
 ps_depth resq 1
+ps_lastif resq 1
 pr_bmsg  resq 1
 ps_stack resq MAX_BLOCKS + 1
 pg_nops  resq 1
@@ -92,6 +96,7 @@ FUNC parse
     mov [g_roots], rax
     mov qword [g_nroots], 0
     mov qword [ps_depth], 0
+    mov qword [ps_lastif], -1
     mov r12, [g_tokens]
     xor r13d, r13d
     xor r15d, r15d
@@ -109,6 +114,9 @@ FUNC parse
     je .dedent
     cmp eax, TK_INDENT
     je .unexpected_indent
+    cmp eax, TK_ELSE
+    je .else_stmt
+    mov qword [ps_lastif], -1
     cmp eax, TK_IF
     je .if_stmt
     cmp eax, TK_FOR
@@ -302,6 +310,14 @@ FUNC parse
     mov rax, [ps_depth]
     lea rcx, [ps_stack]
     mov rax, [rcx + rax * 8]
+    mov qword [ps_lastif], -1
+    mov rdx, rax
+    shl rdx, 5
+    add rdx, [g_stmts]
+    cmp word [rdx + S_KIND], SK_IF
+    jne .dedent_kind
+    mov [ps_lastif], rax
+.dedent_kind:
     shl rax, 5
     add rax, [g_stmts]
     mov rcx, r14
@@ -313,6 +329,28 @@ FUNC parse
 
 .unexpected_indent:
     SYNERR s_unexp_ind
+
+.else_stmt:
+    mov rax, [ps_lastif]
+    cmp rax, -1
+    jne .else_ok
+    SYNERR s_else_no_if
+.else_ok:
+    mov qword [ps_lastif], -1
+    lea rcx, [s_exp_blk_els]
+    mov [pr_bmsg], rcx
+    mov word [r14 + S_KIND], SK_ELSE
+    mov [r14 + S_TOK], r13d
+    mov [r14 + S_VAR], eax
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov dword [r14 + S_NPARTS], 0
+    mov dword [r14 + S_PIECES], 0
+    inc r13
+    CUR
+    cmp eax, TK_COLON
+    je .if_colon
+    SYNERR s_exp_colon_e
 
 .if_stmt:
     lea rax, [s_exp_block]

@@ -195,6 +195,8 @@ FUNC codegen
     je .loop
     cmp word [r12 + S_KIND], SK_LOOPS
     je .loop
+    cmp word [r12 + S_KIND], SK_ELSE
+    je .next
 
     mov eax, [r12 + S_VAR]
     shl rax, 5
@@ -385,6 +387,10 @@ FUNC codegen
     mov qword [rcx + rax + 8], BK_IF
     mov rdx, [cg_npatch]
     mov [rcx + rax + 16], rdx
+    mov rdx, r12
+    sub rdx, [g_stmts]
+    shr rdx, 5
+    mov [rcx + rax + 24], rdx
     inc qword [cg_bdepth]
     mov qword [cg_nbody], 0
     mov eax, [r12 + S_PARTS]
@@ -1153,6 +1159,22 @@ outline_pass:
 .emit_done:
     ret
 
+else_of:
+    xor eax, eax
+    cmp rbx, [g_nstmt]
+    jae .r
+    mov rdx, rbx
+    shl rdx, 5
+    add rdx, [g_stmts]
+    cmp word [rdx + S_KIND], SK_ELSE
+    jne .r
+    mov ecx, [rdx + S_VAR]
+    cmp rcx, [rsi + 24]
+    jne .r
+    mov rax, rdx
+.r:
+    ret
+
 record_patch:
     call x64_text_offset
     mov r9, [r8]
@@ -1203,6 +1225,30 @@ close_blocks:
     jne .done
     cmp qword [rsi + 8], BK_IF
     jne .close_loop
+    call else_of
+    test rax, rax
+    jz .plain_if
+    push rax
+    BYTES 0xE9, 1
+    call emit_rel32_fwd
+    push rax
+    mov r9, [rsi + 16]
+    mov rcx, [cg_patch]
+    mov r10, [cg_npatch]
+    push r9
+    call patch_list
+    pop r9
+    pop rax
+    mov rcx, [cg_patch]
+    mov [rcx + r9 * 4], eax
+    lea rdx, [r9 + 1]
+    mov [cg_npatch], rdx
+    pop rax
+    mov edx, [rax + S_PIECES]
+    mov [rsi], rdx
+    mov qword [rsi + 24], -1
+    jmp .loop
+.plain_if:
     mov r9, [rsi + 16]
     mov rcx, [cg_patch]
     mov r10, [cg_npatch]
@@ -1561,6 +1607,14 @@ try_branchless:
     add eax, 2
     cmp [r12 + S_PIECES], eax
     jne .no
+    cmp rax, [g_nstmt]
+    jae .no_else
+    mov rdx, rax
+    shl rdx, 5
+    add rdx, [g_stmts]
+    cmp word [rdx + S_KIND], SK_ELSE
+    je .no
+.no_else:
     lea rsi, [r12 + S_SIZE]
     movzx eax, word [rsi + S_KIND]
     cmp eax, SK_DECL
