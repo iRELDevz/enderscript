@@ -40,7 +40,7 @@ s_str_loop2  db "' inside a loop", 0
 s_count1     db "loop count must be int, got ", 0
 s_lvar1      db "loop variable '", 0
 s_lvar2      db "' must be int, it is declared as ", 0
-cmp_chars    db "   <>"
+cmp_chars    db "   <><>"
 s_tn_int     db "int", 0
 s_tn_str     db "str", 0
 s_tn_bool    db "bool", 0
@@ -56,8 +56,8 @@ last_slot resq 1
 last_hash resq 1
 sm_carry  resq 1
 sm_bdepth resq 1
-sm_bstack resq MAX_BLOCKS + 1
-sm_bkind  resq MAX_BLOCKS + 1
+sm_bstack resq MAX_NEST + 1
+sm_bkind  resq MAX_NEST + 1
 
 section .text
 
@@ -1489,6 +1489,10 @@ FUNC check_cond
     je .f_isnot
     cmp r12d, CMP_LT
     je .f_lt
+    cmp r12d, CMP_LE
+    je .f_le
+    cmp r12d, CMP_GE
+    je .f_ge
     cmp r8, r9
     setg al
     jmp .fold_set
@@ -1503,6 +1507,14 @@ FUNC check_cond
 .f_lt:
     cmp r8, r9
     setl al
+    jmp .fold_set
+.f_le:
+    cmp r8, r9
+    setle al
+    jmp .fold_set
+.f_ge:
+    cmp r8, r9
+    setge al
     jmp .fold_set
 .fold_null_null:
     mov eax, 1
@@ -1608,6 +1620,11 @@ FUNC check_cond
     lea rax, [cmp_chars]
     mov cl, [rax + r12]
     call msg_addc
+    cmp r12d, CMP_LE
+    jb .op_done
+    mov cl, '='
+    call msg_addc
+.op_done:
     lea rcx, [s_needs_bin]
     call msg_addz
     mov ecx, esi

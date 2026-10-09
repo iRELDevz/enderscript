@@ -37,7 +37,7 @@ cg_lpl    resq 1
 cg_nlp    resq 1
 cg_label  resq 1
 cg_bdepth resq 1
-cg_bstack resq 16 * (MAX_BLOCKS + 1)
+cg_bstack resq 16 * (MAX_NEST + 1)
 cg_ldepth resq 1
 cg_vreg    resq 1
 cg_vcount  resq 1
@@ -3543,6 +3543,12 @@ cc_of_op:
     mov eax, 0xC
     cmp ecx, CMP_LT
     je .r
+    mov eax, 0xE
+    cmp ecx, CMP_LE
+    je .r
+    mov eax, 0xD
+    cmp ecx, CMP_GE
+    je .r
     mov eax, 0xF
 .r:
     ret
@@ -3570,9 +3576,19 @@ emit_compare:
     xchg r12d, r13d
     cmp r14d, CMP_LT
     je .mirror_gt
+    cmp r14d, CMP_LE
+    je .mirror_ge
+    cmp r14d, CMP_GE
+    je .mirror_le
     cmp r14d, CMP_GT
     jne .int_order_ok
     mov r14d, CMP_LT
+    jmp .int_order_ok
+.mirror_le:
+    mov r14d, CMP_LE
+    jmp .int_order_ok
+.mirror_ge:
+    mov r14d, CMP_GE
     jmp .int_order_ok
 .mirror_gt:
     mov r14d, CMP_GT
@@ -4197,10 +4213,34 @@ sv_leaves:
     jmp .right_const
 .not_lt:
     cmp r9d, CMP_GT
-    jne .right_const
+    jne .not_gt
     mov r9d, CMP_LT
+    jmp .right_const
+.not_gt:
+    cmp r9d, CMP_LE
+    jne .not_le
+    mov r9d, CMP_GE
+    jmp .right_const
+.not_le:
+    cmp r9d, CMP_GE
+    jne .right_const
+    mov r9d, CMP_LE
 .right_const:
     mov r10d, [rax + V_DATA]
+    cmp r9d, CMP_LE
+    jne .le_done
+    cmp r10d, 0x7FFFFFFF
+    je .bad
+    inc r10d
+    mov r9d, CMP_LT
+.le_done:
+    cmp r9d, CMP_GE
+    jne .ge_done
+    cmp r10d, 0x80000000
+    je .bad
+    dec r10d
+    mov r9d, CMP_GT
+.ge_done:
     push rcx
     call sv_node_is_loopvar
     pop rcx
@@ -5121,6 +5161,76 @@ simd_emit:
     pop rbx
     ret
 
+loops_closed:
+    cmp qword [rsi + 40], 0
+    jne .r
+    cmp qword [rsi + 48], 0
+    jle .r
+    mov rax, r12
+    sub rax, [g_stmts]
+    shr rax, 5
+    add eax, 2
+    cmp [r12 + S_PIECES], eax
+    jne .r
+    lea rdx, [r12 + S_SIZE]
+    movzx eax, word [rdx + S_KIND]
+    cmp eax, SK_DECL
+    je .kind
+    cmp eax, SK_ASSIGN
+    jne .r
+.kind:
+    cmp word [rdx + S_MODE], TY_INT
+    jne .r
+    cmp dword [rdx + S_NPARTS], 0
+    je .r
+    mov ecx, [rdx + S_VAR]
+    mov [sv_t], ecx
+    push rdx
+    mov rax, rdx
+    call stmt_root
+    call node_addr
+    pop rdx
+    cmp byte [rax + V_KIND], VK_EXPR
+    jne .r
+    movzx r8d, byte [rax + V_NEG]
+    mov r9d, [rax + V_DATA]
+    mov r10d, [rax + V_DATA + 4]
+    cmp r8d, OP_SUB
+    je .order
+    cmp r8d, OP_ADD
+    jne .r
+    mov ecx, r10d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_VAR
+    jne .order
+    xchg r9d, r10d
+.order:
+    mov ecx, r9d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_VAR
+    jne .r
+    mov ecx, [rax + V_DATA]
+    cmp ecx, [sv_t]
+    jne .r
+    mov ecx, r10d
+    call node_addr
+    cmp byte [rax + V_KIND], VK_INT
+    jne .r
+    mov edx, [rax + V_DATA]
+    cmp r8d, OP_SUB
+    jne .k_ok
+    neg edx
+.k_ok:
+    imul edx, [rsi + 48]
+    mov r9d, 1
+    call sv_add_target
+    mov qword [rsi + 48], 0
+    mov qword [rsi + 80], 1
+    mov eax, [r12 + S_PIECES]
+    mov [cg_skip], rax
+.r:
+    ret
+
 body_callfree:
     push rbx
     push r13
@@ -5421,6 +5531,7 @@ emit_loop_head:
     call unroll_plan
     cmp qword [rsi + 8], BK_FOR
     je .for_head
+    call loops_closed
 
     cmp qword [rsi + 40], 0
     jne .loops_dyn
