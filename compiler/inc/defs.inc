@@ -42,6 +42,9 @@ default rel
 %define TK_LOOPS    38
 %define TK_ELSE     39
 %define TK_AND      40
+%define TK_LE       41
+%define TK_GE       42
+%define TK_ELIF     43
 
 %define T_KIND      0
 %define T_COL       2
@@ -69,6 +72,10 @@ default rel
 %define CMP_ISNOT   2
 %define CMP_LT      3
 %define CMP_GT      4
+%define CMP_LE      5
+%define CMP_GE      6
+%define MAX_NEST    4200
+%define MAX_ELIF    2000
 
 %define V_KIND      0
 %define V_NEG       1

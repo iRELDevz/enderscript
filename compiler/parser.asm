@@ -21,7 +21,9 @@ s_too_long    db "expression has more than 2000 values and operators", 0
 s_exp_colon   db "expected ':' after the if condition", 0
 s_exp_block   db "expected an indented block after 'if'", 0
 s_unexp_ind   db "unexpected indentation", 0
-s_exp_cmp     db "expected 'is', '==', 'isnot', '<' or '>' in the if condition", 0
+s_exp_cmp     db "expected 'is', '==', 'isnot', '!=', '<', '>', '<=' or '>=' in the if condition", 0
+s_elif_no_if  db "'elif' must follow an 'if' block", 0
+s_many_elif   db "more than 2000 'elif' in one chain", 0
 s_exp_colon_e db "expected ':' after 'else'", 0
 s_exp_blk_els db "expected an indented block after 'else'", 0
 s_else_no_if  db "'else' must follow an 'if' block", 0
@@ -45,6 +47,8 @@ pr_depth resd 1
 alignb 8
 ps_depth resq 1
 ps_lastif resq 1
+ps_vn     resq 1
+ps_vstack resq 2 * (MAX_ELIF + 1)
 pr_bmsg  resq 1
 ps_stack resq MAX_BLOCKS + 1
 pg_nops  resq 1
@@ -100,6 +104,7 @@ FUNC parse
     mov qword [g_nroots], 0
     mov qword [ps_depth], 0
     mov qword [ps_lastif], -1
+    mov qword [ps_vn], 0
     mov r12, [g_tokens]
     xor r13d, r13d
     xor r15d, r15d
@@ -119,6 +124,12 @@ FUNC parse
     je .unexpected_indent
     cmp eax, TK_ELSE
     je .else_stmt
+    cmp eax, TK_ELIF
+    je .elif_stmt
+    push rax
+    mov rcx, [ps_depth]
+    call close_virtual
+    pop rax
     mov qword [ps_lastif], -1
     cmp eax, TK_IF
     je .if_stmt
@@ -309,6 +320,8 @@ FUNC parse
     jmp .stmt
 
 .dedent:
+    mov rcx, [ps_depth]
+    call close_virtual
     dec qword [ps_depth]
     mov rax, [ps_depth]
     lea rcx, [ps_stack]
@@ -332,6 +345,37 @@ FUNC parse
 
 .unexpected_indent:
     SYNERR s_unexp_ind
+
+.elif_stmt:
+    mov rax, [ps_lastif]
+    cmp rax, -1
+    jne .elif_ok
+    SYNERR s_elif_no_if
+.elif_ok:
+    cmp qword [ps_vn], MAX_ELIF
+    jb .elif_room
+    SYNERR s_many_elif
+.elif_room:
+    mov qword [ps_lastif], -1
+    mov word [r14 + S_KIND], SK_ELSE
+    mov [r14 + S_TOK], r13d
+    mov [r14 + S_VAR], eax
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov dword [r14 + S_NPARTS], 0
+    mov dword [r14 + S_PIECES], 0
+    mov rax, [ps_vn]
+    lea rcx, [ps_vstack]
+    shl rax, 4
+    mov rdx, r14
+    sub rdx, [g_stmts]
+    shr rdx, 5
+    mov [rcx + rax], rdx
+    mov rdx, [ps_depth]
+    mov [rcx + rax + 8], rdx
+    inc qword [ps_vn]
+    add r14, S_SIZE
+    jmp .if_stmt
 
 .else_stmt:
     mov rax, [ps_lastif]
@@ -476,12 +520,35 @@ FUNC parse
     call diag_error_tok
 
 .done:
+    xor ecx, ecx
+    call close_virtual
     mov rax, r14
     sub rax, [g_stmts]
     shr rax, 5
     mov [g_nstmt], rax
     mov [g_nparts], r15
     ENDF
+
+close_virtual:
+    mov rax, [ps_vn]
+    test rax, rax
+    jz .r
+    dec rax
+    shl rax, 4
+    lea rdx, [ps_vstack]
+    cmp [rdx + rax + 8], rcx
+    jb .r
+    mov rax, [rdx + rax]
+    shl rax, 5
+    add rax, [g_stmts]
+    mov rdx, r14
+    sub rdx, [g_stmts]
+    shr rdx, 5
+    mov [rax + S_PIECES], edx
+    dec qword [ps_vn]
+    jmp close_virtual
+.r:
+    ret
 
 parse_value:
     mov dword [pr_depth], 0
@@ -773,6 +840,12 @@ parse_group:
     je .have_op
     mov r9d, CMP_GT
     cmp eax, TK_GT
+    je .have_op
+    mov r9d, CMP_LE
+    cmp eax, TK_LE
+    je .have_op
+    mov r9d, CMP_GE
+    cmp eax, TK_GE
     je .have_op
     SYNERR s_exp_cmp
 .have_op:

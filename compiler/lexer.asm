@@ -33,6 +33,7 @@ keywords:
     db 5, TK_RANGE, "range"
     db 5, TK_LOOPS, "loops"
     db 4, TK_ELSE,  "else"
+    db 4, TK_ELIF,  "elif"
     db 0
 
 global escape_chars
@@ -163,15 +164,25 @@ FUNC lex
     mov ecx, TK_COLON
     cmp al, ':'
     je .single
+    cmp al, '!'
+    je .bang
     mov ecx, TK_LT
     cmp al, '<'
-    je .single
+    jne .not_lt
+    mov edx, TK_LE
+    jmp .maybe_eq
+.not_lt:
     cmp al, '>'
     jne .unexpected
     mov ecx, TK_GT
     lea rdx, [rsi + 1]
     cmp rdx, r12
     jae .single
+    cmp byte [rdx], '='
+    jne .not_ge
+    mov ecx, TK_GE
+    jmp .two
+.not_ge:
     cmp byte [rdx], '>'
     jne .single
     mov ecx, TK_SHR
@@ -183,6 +194,30 @@ FUNC lex
 
 .skip:
     inc rsi
+    jmp .next
+
+.bang:
+    lea rdx, [rsi + 1]
+    cmp rdx, r12
+    jae .unexpected
+    cmp byte [rdx], '='
+    jne .unexpected
+    mov ecx, TK_ISNOT
+    jmp .two
+
+.maybe_eq:
+    lea r8, [rsi + 1]
+    cmp r8, r12
+    jae .single
+    cmp byte [r8], '='
+    jne .single
+    mov ecx, edx
+
+.two:
+    mov r8, rsi
+    mov edx, 2
+    EMIT_TOK
+    add rsi, 2
     jmp .next
 
 .single:
