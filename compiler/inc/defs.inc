@@ -40,6 +40,7 @@ default rel
 %define TK_IN       36
 %define TK_RANGE    37
 %define TK_LOOPS    38
+%define TK_ELSE     39
 
 %define T_KIND      0
 %define T_COL       2
@@ -81,6 +82,7 @@ default rel
 %define SK_IF       4
 %define SK_FOR      5
 %define SK_LOOPS    6
+%define SK_ELSE     7
 
 %define BK_IF       1
 %define BK_LOOP     2

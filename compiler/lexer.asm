@@ -31,6 +31,7 @@ keywords:
     db 2, TK_IN,    "in"
     db 5, TK_RANGE, "range"
     db 5, TK_LOOPS, "loops"
+    db 4, TK_ELSE,  "else"
     db 0
 
 global escape_chars
@@ -121,7 +122,19 @@ FUNC lex
     je .single
     mov ecx, TK_EQ
     cmp al, '='
-    je .single
+    jne .not_eq
+    lea rdx, [rsi + 1]
+    cmp rdx, r12
+    jae .single
+    cmp byte [rdx], '='
+    jne .single
+    mov ecx, TK_IS
+    mov r8, rsi
+    mov edx, 2
+    EMIT_TOK
+    add rsi, 2
+    jmp .next
+.not_eq:
     mov ecx, TK_MINUS
     cmp al, '-'
     je .single
