@@ -1,5 +1,7 @@
 # EnderScript
 
+[Bahasa Indonesia](README.md) | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [हिन्दी](README.hi.md)
+
 Repository ini adalah repository original dan awal dari project EnderScript. Repository lain hanya repository pendukung dan tidak bisa diklaim sebagai repository original project EnderScript.
 
 ## Target
@@ -8,7 +10,7 @@ Branch ini membangun compiler EnderScript untuk Windows x64. Compiler ditulis da
 
 ## Build
 
-Kebutuhan: NASM dan GCC (MinGW-w64).
+Kebutuhan: NASM, GCC (MinGW-w64).
 
 ```
 .\build.ps1
