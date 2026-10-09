@@ -56,3 +56,12 @@ jobs:
             python tests/fuzz_expr.py ./ender.exe $s 400
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
+      - name: Fuzz language
+        shell: pwsh
+        run: |
+          foreach ($f in @('fuzz_loop', 'fuzz_if', 'fuzz_bl', 'fuzz_divis', 'fuzz_simd', 'fuzz_range', 'fuzz_ja')) {
+            foreach ($s in 1..25) {
+              python tests/$f.py ./ender.exe $s
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+            }
+          }

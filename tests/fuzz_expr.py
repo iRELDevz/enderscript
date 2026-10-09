@@ -22,7 +22,7 @@ def cdiv(a, b):
     return q if (a < 0) == (b < 0) else -q
 
 
-VALUES = [0, 1, -1, 2, 3, 7, 10, 16, 100, 255, 1024, 65536, 2147483647, -2147483648, -7, -16, 123456789]
+VALUES = [0, 1, -1, 2, 3, 5, 6, 7, 9, 10, 12, 16, 17, 31, 33, 63, 129, 65537, 100, 255, 641, 1000, 1024, 65536, 1000003, 2147483647, 2147483646, -2147483648, -2147483647, -3, -5, -7, -16, -641, 123456789, -123456789]
 names = ["a", "b", "c", "d"]
 
 
@@ -84,6 +84,8 @@ while count < int(sys.argv[3]) if len(sys.argv) > 3 else count < 400:
         lines.append("print>>" + target)
     expected.append(str(v))
 
+if seed % 2:
+    lines = lines[:len(names)] + ["loops(1):"] + ["  " + l for l in lines[len(names):]]
 src = os.path.join(work, "fuzz%d.es" % seed)
 with open(src, "w", newline="\n") as f:
     f.write("\n".join(lines) + "\n")

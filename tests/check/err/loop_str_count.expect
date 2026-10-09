@@ -1,0 +1,1 @@
+loop_str_count.es:2:7: type error: loop count must be int, got str

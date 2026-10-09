@@ -1,0 +1,1 @@
+loop_nested_undecl.es:2:7: semantic error: variable 'k' must be declared before the loop
