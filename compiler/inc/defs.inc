@@ -88,6 +88,8 @@ default rel
 
 %define BK_IF       1
 %define BK_LOOP     2
+%define BK_FOR      3
+%define BK_LOOPS    4
 %define MAX_REG_LOOPS 6
 
 %define S_KIND      0
