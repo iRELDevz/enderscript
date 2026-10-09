@@ -1992,12 +1992,12 @@ tok_word:
     b.hs .Ltok_word_eq
     mov x8, x13
     add x8, x8, x14, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x9, x17, #0, #8
     and w16, w9, #0xff
     mov x8, x11
     add x8, x8, x14, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     cmp w16, w17
     b.ne .Ltok_word_r
     adds w14, w14, #1
@@ -2050,12 +2050,12 @@ tok_same:
     b.hs .Ltok_same_eq
     mov x8, x14
     add x8, x8, x10, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x9, x17, #0, #8
     and w16, w9, #0xff
     mov x8, x15
     add x8, x8, x10, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     cmp w16, w17
     b.ne .Ltok_same_r
     adds w10, w10, #1

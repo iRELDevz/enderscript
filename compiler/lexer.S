@@ -638,12 +638,12 @@ FUNC lex
     mov x8, x13
     add x8, x8, x14, lsl #0
     add x8, x8, #2
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x15, x17, #0, #8
     and w16, w15, #0xff
     mov x8, x12
     add x8, x8, x14, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     cmp w16, w17
     b.ne .Llex_kw_next
     adds w14, w14, #1
@@ -792,7 +792,7 @@ FUNC lex
 .Llex_str_loop:
     cmp x20, x23
     b.hs .Llex_unterminated
-    ldur w17, [x20, #0]
+    ldurb w17, [x20, #0]
     bfi x9, x17, #0, #8
     and w16, w9, #0xff
     cmp w16, #10
@@ -810,7 +810,7 @@ FUNC lex
     add x11, x20, #1
     cmp x11, x23
     b.hs .Llex_unterminated
-    ldur w17, [x11, #0]
+    ldurb w17, [x11, #0]
     bfi x9, x17, #0, #8
     and w16, w9, #0xff
     cmp w16, #10
@@ -819,7 +819,7 @@ FUNC lex
     add x8, x8, :lo12:escape_chars
     add x14, x8, #0
 .Llex_esc_find:
-    ldur w17, [x14, #0]
+    ldurb w17, [x14, #0]
     bfi x15, x17, #0, #8
     and w16, w15, #0xff
     and w17, w15, #0xff
@@ -964,7 +964,7 @@ FUNC lex
 .Llex_ls_scan:
     cmp x12, x23
     b.hs .Llex_next
-    ldur w17, [x12, #0]
+    ldurb w17, [x12, #0]
     bfi x9, x17, #0, #8
     and w16, w9, #0xff
     cmp w16, #32
@@ -1290,12 +1290,12 @@ FUNC lex
     b.hs .Llex_ps_equal
     mov x8, x24
     add x8, x8, x11, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x9, x17, #0, #8
     and w16, w9, #0xff
     mov x8, x15
     add x8, x8, x11, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     cmp w16, w17
     b.ne .Llex_ps_done
     adds x11, x11, #1
@@ -1321,7 +1321,7 @@ FUNC lex
     add x10, x8, #0
     mov x0, x10
     bl msg_addz
-    ldur w17, [x23, #0]
+    ldurb w17, [x23, #0]
     bfi x10, x17, #0, #8
     mov x0, x10
     bl msg_addc
@@ -1345,7 +1345,7 @@ FUNC lex
     add x10, x8, #0
     mov x8, x10
     add x8, x8, x9, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x10, x17, #0, #8
     mov x0, x10
     bl msg_addc
@@ -1357,7 +1357,7 @@ FUNC lex
     add x10, x8, #0
     mov x8, x10
     add x8, x8, x9, lsl #0
-    ldr w17, [x8]
+    ldrb w17, [x8]
     bfi x10, x17, #0, #8
     mov x0, x10
     bl msg_addc
@@ -1381,7 +1381,7 @@ FUNC lex
     add x10, x8, #0
     mov x0, x10
     bl msg_addz
-    ldur w17, [x23, #1]
+    ldurb w17, [x23, #1]
     bfi x10, x17, #0, #8
     mov x0, x10
     bl msg_addc
