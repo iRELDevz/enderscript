@@ -41,6 +41,7 @@ default rel
 %define TK_RANGE    37
 %define TK_LOOPS    38
 %define TK_ELSE     39
+%define TK_AND      40
 
 %define T_KIND      0
 %define T_COL       2
@@ -62,6 +63,7 @@ default rel
 %define VK_EXPR     6
 %define VK_CMP      7
 %define VK_OR       8
+%define VK_AND      9
 
 %define CMP_IS      1
 %define CMP_ISNOT   2

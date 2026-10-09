@@ -1419,6 +1419,8 @@ FUNC check_cond
     mov rbx, rcx
     cmp byte [rbx + V_KIND], VK_OR
     je .or
+    cmp byte [rbx + V_KIND], VK_AND
+    je .and
     movzx r12d, byte [rbx + V_NEG]
     mov ecx, [rbx + V_DATA]
     call node_ptr
@@ -1565,6 +1567,38 @@ FUNC check_cond
 .or_done:
     ENDF
 
+.and:
+    mov ecx, [rbx + V_DATA]
+    call node_ptr
+    mov r13, rax
+    mov rcx, r13
+    call check_cond
+    mov ecx, [rbx + V_DATA + 4]
+    call node_ptr
+    mov r15, rax
+    mov rcx, r15
+    call check_cond
+    cmp byte [r13 + V_KIND], VK_BOOL
+    jne .and_right
+    cmp qword [r13 + V_DATA], 0
+    je .and_false
+    mov rcx, r15
+    call copy_node
+    ENDF
+.and_right:
+    cmp byte [r15 + V_KIND], VK_BOOL
+    jne .and_done
+    cmp qword [r15 + V_DATA], 0
+    je .and_false
+    mov rcx, r13
+    call copy_node
+    ENDF
+.and_false:
+    xor eax, eax
+    call make_bool_const
+.and_done:
+    ENDF
+
 .bad_ordered_left:
     mov esi, r14d
 .bad_ordered_right:
@@ -1608,6 +1642,8 @@ FUNC intern_tree
     cmp eax, VK_CMP
     je .pair
     cmp eax, VK_OR
+    je .pair
+    cmp eax, VK_AND
     je .pair
     cmp eax, VK_STR
     jne .done
