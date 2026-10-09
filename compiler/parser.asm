@@ -25,7 +25,7 @@ s_exp_cmp     db "expected 'is', '==', 'isnot', '<' or '>' in the if condition",
 s_exp_colon_e db "expected ':' after 'else'", 0
 s_exp_blk_els db "expected an indented block after 'else'", 0
 s_else_no_if  db "'else' must follow an 'if' block", 0
-s_too_many_or db "more than 64 values joined with 'or'", 0
+s_too_many_or db "more than 64 values joined with 'or' or 'and'", 0
 s_exp_loopvar db "expected a variable name after 'for'", 0
 s_exp_in      db "expected 'in' after the loop variable", 0
 s_exp_range   db "expected 'range' after 'in'", 0
@@ -49,6 +49,9 @@ pr_bmsg  resq 1
 ps_stack resq MAX_BLOCKS + 1
 pg_nops  resq 1
 pg_ops   resd MAX_OR
+pg_conn  resd MAX_OR
+pg_oracc resd 1
+pg_and   resd 1
 pg_op    resd 1
 pg_tok   resd 1
 pg_rhs   resd 1
@@ -690,7 +693,7 @@ new_pair:
     ret
 
 parse_cond:
-    call parse_group
+    call parse_and
 .loop:
     push rax
     CUR
@@ -698,11 +701,32 @@ parse_cond:
     jne .done
     push r13
     inc r13
-    call parse_group
+    call parse_and
     mov r8d, eax
     pop rdx
     pop rax
     mov ecx, VK_OR
+    xor r9d, r9d
+    call new_pair
+    jmp .loop
+.done:
+    pop rax
+    ret
+
+parse_and:
+    call parse_group
+.loop:
+    push rax
+    CUR
+    cmp eax, TK_AND
+    jne .done
+    push r13
+    inc r13
+    call parse_group
+    mov r8d, eax
+    pop rdx
+    pop rax
+    mov ecx, VK_AND
     xor r9d, r9d
     call new_pair
     jmp .loop
@@ -723,8 +747,18 @@ parse_group:
     mov [rdx + rcx * 4], eax
     inc qword [pg_nops]
     CUR
+    mov ecx, VK_OR
     cmp eax, TK_OR
+    je .connector
+    mov ecx, VK_AND
+    cmp eax, TK_AND
     jne .compare
+.connector:
+    mov rax, [pg_nops]
+    cmp rax, MAX_OR
+    jae .too_many
+    lea rdx, [pg_conn]
+    mov [rdx + rax * 4], ecx
     inc r13
     jmp .operand
 .compare:
@@ -747,17 +781,10 @@ parse_group:
     inc r13
     call parse_value
     mov [pg_rhs], eax
-    mov eax, [pg_ops]
-    mov r8d, [pg_rhs]
-    mov r9d, [pg_op]
-    mov edx, [pg_tok]
-    mov ecx, VK_CMP
-    call new_pair
-    mov rsi, 1
-.chain:
+    xor esi, esi
+.cmps:
     cmp rsi, [pg_nops]
-    jae .chain_done
-    push rax
+    jae .cmps_done
     lea rdx, [pg_ops]
     mov eax, [rdx + rsi * 4]
     mov r8d, [pg_rhs]
@@ -765,15 +792,54 @@ parse_group:
     mov edx, [pg_tok]
     mov ecx, VK_CMP
     call new_pair
+    lea rdx, [pg_ops]
+    mov [rdx + rsi * 4], eax
+    inc rsi
+    jmp .cmps
+.cmps_done:
+    mov dword [pg_oracc], -1
+    mov eax, [pg_ops]
+    mov [pg_and], eax
+    mov esi, 1
+.chain:
+    cmp rsi, [pg_nops]
+    jae .chain_done
+    lea rdx, [pg_conn]
+    cmp dword [rdx + rsi * 4], VK_AND
+    jne .chain_or
+    mov eax, [pg_and]
+    lea rdx, [pg_ops]
+    mov r8d, [rdx + rsi * 4]
+    mov edx, [pg_tok]
+    mov ecx, VK_AND
+    xor r9d, r9d
+    call new_pair
+    mov [pg_and], eax
+    jmp .chain_next
+.chain_or:
+    call .flush_and
+    lea rdx, [pg_ops]
+    mov eax, [rdx + rsi * 4]
+    mov [pg_and], eax
+.chain_next:
+    inc rsi
+    jmp .chain
+.chain_done:
+    call .flush_and
+    mov eax, [pg_oracc]
+    ret
+.flush_and:
+    mov eax, [pg_and]
+    cmp dword [pg_oracc], -1
+    je .flush_set
     mov r8d, eax
-    pop rax
+    mov eax, [pg_oracc]
     mov edx, [pg_tok]
     mov ecx, VK_OR
     xor r9d, r9d
     call new_pair
-    inc rsi
-    jmp .chain
-.chain_done:
+.flush_set:
+    mov [pg_oracc], eax
     ret
 .too_many:
     SYNERR s_too_many_or

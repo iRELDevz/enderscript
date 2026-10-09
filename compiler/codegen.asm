@@ -32,8 +32,10 @@ cg_omask  resq 1
 cg_rdelta resq 1
 cg_patch  resq 1
 cg_npatch resq 1
-cg_bpatch resq 1
-cg_nbody  resq 1
+cg_lp     resq 1
+cg_lpl    resq 1
+cg_nlp    resq 1
+cg_label  resq 1
 cg_bdepth resq 1
 cg_bstack resq 16 * (MAX_BLOCKS + 1)
 cg_ldepth resq 1
@@ -51,6 +53,7 @@ cg_blacc   resd 1
 cg_blk     resd 1
 cg_blvar   resd 1
 cg_bldata  resd 1
+cg_bland   resd 1
 cg_extra   resq 1
 sv_t       resd 1
 sv_sign    resd 1
@@ -110,9 +113,14 @@ FUNC codegen
     mov [cg_patch], rax
     mov rcx, [g_nparts]
     add rcx, 16
-    shl rcx, 2
+    shl rcx, 3
     call mem_alloc
-    mov [cg_bpatch], rax
+    mov [cg_lp], rax
+    mov rcx, [g_nparts]
+    add rcx, 16
+    shl rcx, 2
+    add rax, rcx
+    mov [cg_lpl], rax
     mov rcx, [g_nvars]
     add rcx, 16
     call mem_alloc
@@ -130,7 +138,8 @@ FUNC codegen
     mov qword [cg_nprom], 0
     pop rdi
     mov qword [cg_npatch], 0
-    mov qword [cg_nbody], 0
+    mov qword [cg_nlp], 0
+    mov qword [cg_label], 1
     mov qword [cg_bdepth], 0
     mov qword [cg_ldepth], 0
     call outline_pass
@@ -392,13 +401,12 @@ FUNC codegen
     shr rdx, 5
     mov [rcx + rax + 24], rdx
     inc qword [cg_bdepth]
-    mov qword [cg_nbody], 0
     mov eax, [r12 + S_PARTS]
     mov rdx, [g_roots]
     mov ecx, [rdx + rax * 4]
-    mov edx, 1
+    xor edx, edx
+    xor r8d, r8d
     call emit_cond
-    call patch_body
     jmp .next
 
 .loop:
@@ -1201,14 +1209,6 @@ patch_list:
 .done:
     ret
 
-patch_body:
-    mov rcx, [cg_bpatch]
-    xor r9d, r9d
-    mov r10, [cg_nbody]
-    call patch_list
-    mov qword [cg_nbody], 0
-    ret
-
 close_blocks:
     push rbx
     push rsi
@@ -1275,26 +1275,58 @@ jump_to_end:
     lea r8, [cg_npatch]
     jmp record_patch
 
-jump_to_body:
-    mov rcx, [cg_bpatch]
-    lea r8, [cg_nbody]
-    jmp record_patch
+jump_to_label:
+    test ecx, ecx
+    jz jump_to_end
+    call x64_text_offset
+    mov rdx, [cg_nlp]
+    mov r8, [cg_lp]
+    mov [r8 + rdx * 4], eax
+    mov r8, [cg_lpl]
+    mov [r8 + rdx * 4], ecx
+    inc qword [cg_nlp]
+    mov dword [rdi], 0
+    add rdi, 4
+    ret
 
-emit_jcc:
-    shl eax, 8
-    or eax, 0x800F
-    push rdx
-    mov r8d, 2
-    call x64_bytes
-    pop rdx
-    test edx, edx
-    jnz jump_to_body
-    jmp jump_to_end
+place_label:
+    call x64_text_offset
+    mov r9, rax
+    xor r10d, r10d
+    xor r11d, r11d
+.l:
+    cmp r10, [cg_nlp]
+    jae .done
+    mov r8, [cg_lpl]
+    mov edx, [r8 + r10 * 4]
+    mov r8, [cg_lp]
+    mov eax, [r8 + r10 * 4]
+    cmp edx, ecx
+    jne .keep
+    mov edx, r9d
+    sub edx, eax
+    sub edx, 4
+    mov r8, [x64_text_base]
+    mov [r8 + rax], edx
+    jmp .n
+.keep:
+    mov [r8 + r11 * 4], eax
+    mov r8, [cg_lpl]
+    mov [r8 + r11 * 4], edx
+    inc r11
+.n:
+    inc r10
+    jmp .l
+.done:
+    mov [cg_nlp], r11
+    ret
 
 emit_cond:
     push rsi
     push rbx
+    push r12
     mov ebx, edx
+    mov r12d, r8d
     call node_addr
     mov rsi, rax
     movzx eax, byte [rsi + V_KIND]
@@ -1302,39 +1334,63 @@ emit_cond:
     je .const
     cmp eax, VK_OR
     je .or
+    cmp eax, VK_AND
+    je .and
     call emit_compare
     test ebx, ebx
-    jz .to_body
+    jnz .jcc
     xor eax, 1
-    xor edx, edx
-    call emit_jcc
-    jmp .done
-.to_body:
-    mov edx, 1
-    call emit_jcc
-    jmp .done
+.jcc:
+    shl eax, 8
+    or eax, 0x800F
+    mov r8d, 2
+    call x64_bytes
+    jmp .record
 .const:
+    xor eax, eax
     cmp qword [rsi + V_DATA], 0
-    jne .const_true
-    test ebx, ebx
-    jz .done
+    setne al
+    cmp eax, ebx
+    jne .done
     BYTES 0xE9, 1
-    call jump_to_end
-    jmp .done
-.const_true:
-    test ebx, ebx
-    jnz .done
-    BYTES 0xE9, 1
-    call jump_to_body
+.record:
+    mov ecx, r12d
+    call jump_to_label
     jmp .done
 .or:
+    mov eax, 1
+    jmp .pair
+.and:
+    xor eax, eax
+.pair:
+    cmp eax, ebx
+    jne .split
     mov ecx, [rsi + V_DATA]
-    xor edx, edx
+    mov edx, ebx
+    mov r8d, r12d
     call emit_cond
     mov ecx, [rsi + V_DATA + 4]
     mov edx, ebx
+    mov r8d, r12d
     call emit_cond
+    jmp .done
+.split:
+    mov r8, [cg_label]
+    inc qword [cg_label]
+    push r8
+    push r8
+    mov edx, eax
+    mov ecx, [rsi + V_DATA]
+    call emit_cond
+    mov ecx, [rsi + V_DATA + 4]
+    mov edx, ebx
+    mov r8d, r12d
+    call emit_cond
+    pop rcx
+    pop rcx
+    call place_label
 .done:
+    pop r12
     pop rbx
     pop rsi
     ret
@@ -1514,6 +1570,8 @@ cond_leaves:
     movzx edx, byte [rax + V_KIND]
     cmp edx, VK_OR
     je .or
+    cmp edx, VK_AND
+    je .and
     cmp edx, VK_CMP
     jne .bad
     movzx edx, byte [rax + V_TYPE]
@@ -1553,6 +1611,9 @@ cond_leaves:
 .bad:
     mov eax, -1
     ret
+.and:
+    mov dword [cg_bland], 1
+    jmp .or
 
 bl_emit:
     push rsi
@@ -1669,6 +1730,7 @@ try_branchless:
     mov rdx, [g_roots]
     mov ecx, [rdx + rax * 4]
     mov dword [cg_bldata], 0
+    mov dword [cg_bland], 0
     push rcx
     call cond_leaves
     pop rcx
@@ -1678,6 +1740,8 @@ try_branchless:
     ja .no
     cmp dword [cg_bldata], 0
     je .no
+    cmp dword [cg_bland], 0
+    jne .no
 
     mov eax, [cg_depth]
     mov [cg_blacc], eax
