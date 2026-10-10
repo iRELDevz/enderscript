@@ -158,6 +158,24 @@ s_exp_value:
 s_exp_number:
     .ascii "expected number after '-'"
     .byte 0
+s_brk_out:
+    .ascii "'break' outside a loop"
+    .byte 0
+s_cont_out:
+    .ascii "'continue' outside a loop"
+    .byte 0
+s_exp_bname:
+    .ascii "expected a loop name after 'break.'"
+    .byte 0
+s_no_group:
+    .ascii "no staged loop named '"
+    .byte 0
+s_no_group2:
+    .ascii "' around this 'break'"
+    .byte 0
+w_takedata:
+    .ascii "takedata"
+    .byte 0
 
     .bss
     .p2align 2
@@ -172,6 +190,8 @@ ps_gn:
     .zero (1) * 8
 ps_gstack:
     .zero (2 * (MAX_BLOCKS + 1)) * 8
+ps_gstmt:
+    .zero (MAX_BLOCKS + 1) * 8
 ps_pflag:
     .zero (MAX_BLOCKS + 1) * 1
 ps_vn:
@@ -356,6 +376,10 @@ FUNC parse
     b.eq .Lparse_print_stmt
     cmp w9, #12
     b.eq .Lparse_show_stmt
+    cmp w9, #45
+    b.eq .Lparse_break_stmt
+    cmp w9, #46
+    b.eq .Lparse_continue_stmt
     adrp x8, s_exp_stmt
     add x8, x8, :lo12:s_exp_stmt
     add x10, x8, #0
@@ -368,6 +392,226 @@ FUNC parse
     ldp x27, x28, [sp, #80]
     ldp x29, x30, [sp], #96
     b syn_error
+
+.Lparse_continue_stmt:
+    mov w17, #9
+    sturh w17, [x25, #0]
+    adrp x8, s_cont_out
+    add x8, x8, :lo12:s_cont_out
+    add x20, x8, #0
+    b .Lparse_jump_stmt
+.Lparse_break_stmt:
+    mov w17, #8
+    sturh w17, [x25, #0]
+    adrp x8, s_brk_out
+    add x8, x8, :lo12:s_brk_out
+    add x20, x8, #0
+.Lparse_jump_stmt:
+    stur w24, [x25, #4]
+    mov w17, #0
+    sturh w17, [x25, #2]
+    mov w17, #0
+    stur w17, [x25, #12]
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x16, [x8]
+    mov x9, x16
+    stur w9, [x25, #16]
+    mov w17, #0
+    stur w17, [x25, #28]
+    adds x24, x24, #1
+    ldurh w16, [x25, #0]
+    cmp w16, #8
+    b.ne .Lparse_jump_inner
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #5
+    b.eq .Lparse_break_group
+.Lparse_jump_inner:
+    adrp x8, ps_depth
+    add x8, x8, :lo12:ps_depth
+    ldr x16, [x8]
+    mov x10, x16
+.Lparse_jump_find:
+    tst x10, x10
+    b.eq .Lparse_jump_none
+    subs x10, x10, #1
+    adrp x8, ps_stack
+    add x8, x8, :lo12:ps_stack
+    add x11, x8, #0
+    mov x8, x11
+    add x8, x8, x10, lsl #3
+    ldr x16, [x8]
+    mov x9, x16
+    mov x11, x9
+    lsl x17, x11, #5
+    mov x11, x17
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    adds x11, x11, x16
+    ldurh w16, [x11, #0]
+    cmp w16, #5
+    b.eq .Lparse_jump_found
+    ldurh w16, [x11, #0]
+    cmp w16, #6
+    b.ne .Lparse_jump_find
+.Lparse_jump_found:
+    stur w9, [x25, #8]
+    ldurh w17, [x11, #2]
+    mov w16, #1
+    orr w17, w17, w16
+    sturh w17, [x11, #2]
+    b .Lparse_end_line
+.Lparse_jump_none:
+    mov x10, x20
+    ldur w16, [x25, #4]
+    mov w11, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_break_group:
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #2
+    b.eq .Lparse_bg_name
+    adrp x8, s_exp_bname
+    add x8, x8, :lo12:s_exp_bname
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_bg_name:
+    adrp x8, ps_gn
+    add x8, x8, :lo12:ps_gn
+    ldr x16, [x8]
+    mov x20, x16
+.Lparse_bg_find:
+    tst x20, x20
+    b.eq .Lparse_bg_none
+    subs x20, x20, #1
+    mov x9, x20
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, ps_gstack
+    add x8, x8, :lo12:ps_gstack
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    ldr x16, [x8]
+    mov x10, x16
+    mov w11, w24
+    bl tok_same
+    b.ne .Lparse_bg_find
+    mov w17, #1
+    sturh w17, [x25, #2]
+    adrp x8, ps_gstmt
+    add x8, x8, :lo12:ps_gstmt
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x20, lsl #3
+    ldr x16, [x8]
+    mov x9, x16
+    stur w9, [x25, #8]
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldurh w17, [x9, #2]
+    mov w16, #2
+    orr w17, w17, w16
+    sturh w17, [x9, #2]
+    lsl x17, x20, #4
+    mov x20, x17
+    adrp x8, ps_gstack
+    add x8, x8, :lo12:ps_gstack
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x20, lsl #0
+    add x8, x8, #8
+    ldr x16, [x8]
+    mov x10, x16
+.Lparse_bg_flag:
+    adrp x8, ps_depth
+    add x8, x8, :lo12:ps_depth
+    ldr x17, [x8]
+    cmp x10, x17
+    b.hs .Lparse_bg_done
+    adrp x8, ps_stack
+    add x8, x8, :lo12:ps_stack
+    add x11, x8, #0
+    mov x8, x11
+    add x8, x8, x10, lsl #3
+    ldr x16, [x8]
+    mov x9, x16
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldurh w16, [x9, #0]
+    cmp w16, #5
+    b.eq .Lparse_bg_mark
+    ldurh w16, [x9, #0]
+    cmp w16, #6
+    b.ne .Lparse_bg_next
+.Lparse_bg_mark:
+    ldurh w17, [x9, #2]
+    mov w16, #1
+    orr w17, w17, w16
+    sturh w17, [x9, #2]
+.Lparse_bg_next:
+    adds x10, x10, #1
+    b .Lparse_bg_flag
+.Lparse_bg_done:
+    adds x24, x24, #1
+    b .Lparse_end_line
+.Lparse_bg_none:
+    mov w19, w24
+    bl msg_reset
+    adrp x8, s_no_group
+    add x8, x8, :lo12:s_no_group
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov w10, w19
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_no_group2
+    add x8, x8, :lo12:s_no_group2
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_syntax
+    add x8, x8, :lo12:s_syntax
+    add x10, x8, #0
+    mov w11, w19
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
 
 .Lparse_var_stmt:
     stur w24, [x25, #4]
@@ -973,6 +1217,40 @@ FUNC parse
     ldp x29, x30, [sp], #96
     b syn_error
 .Lparse_gs_room:
+    mov w17, #10
+    sturh w17, [x25, #0]
+    mov w17, #0
+    sturh w17, [x25, #2]
+    stur w19, [x25, #4]
+    mov w17, #0
+    stur w17, [x25, #8]
+    mov w17, #0
+    stur w17, [x25, #12]
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x16, [x8]
+    mov x11, x16
+    stur w11, [x25, #16]
+    mov w17, #0
+    stur w17, [x25, #28]
+    mov w17, #0
+    stur w17, [x25, #20]
+    mov w17, #0
+    stur w17, [x25, #24]
+    adrp x8, ps_gstmt
+    add x8, x8, :lo12:ps_gstmt
+    add x10, x8, #0
+    mov x11, x25
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    subs x11, x11, x16
+    lsr x17, x11, #5
+    mov x11, x17
+    mov x8, x10
+    add x8, x8, x9, lsl #3
+    str x11, [x8]
+    adds x25, x25, #32
     lsl x17, x9, #4
     mov x9, x17
     adrp x8, ps_gstack
@@ -1115,6 +1393,31 @@ FUNC parse
     adrp x8, ps_gn
     add x8, x8, :lo12:ps_gn
     str x17, [x8]
+    adrp x8, ps_gn
+    add x8, x8, :lo12:ps_gn
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, ps_gstmt
+    add x8, x8, :lo12:ps_gstmt
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #3
+    ldr x16, [x8]
+    mov x9, x16
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    adds x9, x9, x16
+    mov x10, x25
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    subs x10, x10, x16
+    lsr x17, x10, #5
+    mov x10, x17
+    stur w10, [x9, #28]
     mov x9, x24
     lsl x17, x9, #4
     mov x9, x17
@@ -1212,8 +1515,24 @@ FUNC parse
     mov w17, #6
     sturh w17, [x25, #0]
     mov w17, #0
+    sturh w17, [x25, #2]
+    mov w17, #0
     stur w17, [x25, #28]
     stur w24, [x25, #4]
+    adrp x8, ps_gn
+    add x8, x8, :lo12:ps_gn
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, ps_gstmt
+    add x8, x8, :lo12:ps_gstmt
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #3
+    sub x8, x8, #8
+    ldr x16, [x8]
+    mov x9, x16
+    adds w9, w9, #1
+    stur w9, [x25, #20]
     adrp x8, g_nroots
     add x8, x8, :lo12:g_nroots
     ldr x16, [x8]
@@ -1694,6 +2013,10 @@ FUNC parse
     mov w17, #5
     sturh w17, [x25, #0]
     mov w17, #0
+    sturh w17, [x25, #2]
+    mov w17, #0
+    stur w17, [x25, #20]
+    mov w17, #0
     stur w17, [x25, #28]
     adds x24, x24, #1
     mov x9, x24
@@ -1793,6 +2116,10 @@ FUNC parse
     str x9, [x8]
     mov w17, #6
     sturh w17, [x25, #0]
+    mov w17, #0
+    sturh w17, [x25, #2]
+    mov w17, #0
+    stur w17, [x25, #20]
     mov w17, #0
     stur w17, [x25, #28]
     stur w24, [x25, #4]
@@ -2403,7 +2730,7 @@ parse_primary:
     b.eq .Lparse_primary_leaf
     mov w10, #5
     cmp w9, #2
-    b.eq .Lparse_primary_leaf
+    b.eq .Lparse_primary_ident
     cmp w9, #16
     b.eq .Lparse_primary_true
     cmp w9, #17
@@ -2440,6 +2767,84 @@ parse_primary:
     mov w11, w24
     ldp x29, x30, [sp], #16
     b syn_error
+.Lparse_primary_ident:
+    add x9, x24, #1
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w16, [x8]
+    cmp w16, #5
+    b.ne .Lparse_primary_leaf
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    add x8, x8, #16
+    ldrh w16, [x8]
+    cmp w16, #2
+    b.ne .Lparse_primary_leaf
+    add x10, x24, #2
+    mov w10, w10
+    adrp x8, w_takedata
+    add x8, x8, :lo12:w_takedata
+    add x11, x8, #0
+    mov w12, #8
+    bl tok_word
+    mov w10, #5
+    b.ne .Lparse_primary_leaf
+    str x20, [sp, #-16]!
+    adrp x8, ps_gn
+    add x8, x8, :lo12:ps_gn
+    ldr x16, [x8]
+    mov x20, x16
+.Lparse_primary_take_find:
+    ldr w9, =4294967295
+    tst x20, x20
+    b.eq .Lparse_primary_take_set
+    subs x20, x20, #1
+    mov x9, x20
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, ps_gstack
+    add x8, x8, :lo12:ps_gstack
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x9, lsl #0
+    ldr x16, [x8]
+    mov x10, x16
+    mov w11, w24
+    bl tok_same
+    b.ne .Lparse_primary_take_find
+    adrp x8, ps_gstmt
+    add x8, x8, :lo12:ps_gstmt
+    add x10, x8, #0
+    mov x8, x10
+    add x8, x8, x20, lsl #3
+    ldr x16, [x8]
+    mov x9, x16
+.Lparse_primary_take_set:
+    ldr x20, [sp], #16
+    mov w13, w9
+    mov w10, #10
+    mov w11, w24
+    bl new_node
+    stur w13, [x14, #8]
+    cmn w13, #1
+    b.eq .Lparse_primary_take_done
+    mov w12, w13
+    lsl x17, x12, #5
+    mov x12, x17
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    adds x12, x12, x16
+    ldurh w17, [x12, #2]
+    mov w16, #1
+    orr w17, w17, w16
+    sturh w17, [x12, #2]
+.Lparse_primary_take_done:
+    adds x24, x24, #3
+    ldp x29, x30, [sp], #16
+    ret
 
 parse_string:
     stp x29, x30, [sp, #-16]!

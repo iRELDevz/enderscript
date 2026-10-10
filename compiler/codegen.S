@@ -28,6 +28,9 @@
 #define B_INIT     28
 #define B_ALIAS    32
 #define B_IFIDX    36
+#define B_LABEL    40
+#define B_TAKE     44
+#define B_GIDX     48
 #define B_SIZE     64
 
     .globl img_R_va, img_D_va, img_T_va, img_T_off, img_entry, img_bufoff, img_iat_va
@@ -120,11 +123,15 @@ FUNC codegen
     bl mem_alloc
     STX x0, cg_patch
     LDX x0, g_nparts
+    LDX x9, g_nstmt
+    add x0, x0, x9
     add x0, x0, #16
     lsl x0, x0, #3
     bl mem_alloc
     STX x0, cg_lp
     LDX x9, g_nparts
+    LDX x10, g_nstmt
+    add x9, x9, x10
     add x9, x9, #16
     add x0, x0, x9, lsl #2
     STX x0, cg_lpl
@@ -214,7 +221,19 @@ FUNC codegen
     b.eq .Lcg_loop
     cmp w9, #SK_ELSE
     b.eq .Lcg_next
+    cmp w9, #SK_BREAK
+    b.eq .Lcg_jump
+    cmp w9, #SK_CONTINUE
+    b.eq .Lcg_jump
+    cmp w9, #SK_GROUP
+    b.eq .Lcg_group
     bl emit_store
+    b .Lcg_next
+.Lcg_jump:
+    bl emit_jump
+    b .Lcg_next
+.Lcg_group:
+    bl group_open
     b .Lcg_next
 .Lcg_out:
     bl emit_out_body
@@ -1406,6 +1425,8 @@ close_blocks:
     cmp w9, w19
     b.ne .Lcb_done
     ldr w9, [x20, #B_KIND]
+    cmp w9, #BK_GROUP
+    b.eq .Lcb_group
     cmp w9, #BK_IF
     b.ne .Lcb_loop_close
     mov w0, w19
@@ -1447,9 +1468,23 @@ close_blocks:
     sub x9, x9, #1
     STX x9, cg_bdepth
     b .Lcb_loop
+.Lcb_group:
+    ldr w0, [x20, #B_LABEL]
+    bl place_label
+    mov x0, x20
+    bl take_clear
+    LDX x9, cg_bdepth
+    sub x9, x9, #1
+    STX x9, cg_bdepth
+    b .Lcb_loop
 .Lcb_loop_close:
     mov x0, x20
     bl emit_loop_tail
+    ldr w0, [x20, #B_LABEL]
+    cbz w0, 30f
+    bl place_label
+30: mov x0, x20
+    bl take_clear
     LDX x9, cg_bdepth
     sub x9, x9, #1
     STX x9, cg_bdepth
@@ -1459,6 +1494,100 @@ close_blocks:
     b .Lcb_loop
 .Lcb_done:
     LEAVE
+
+emit_jump:
+    ENTER
+    LDX x19, cg_cur
+    LDX x9, cg_bdepth
+    mov x10, #B_SIZE
+    LA x11, cg_bstack
+    madd x20, x9, x10, x11
+.Lej_find:
+    sub x20, x20, #B_SIZE
+    ldrh w9, [x19, #S_MODE]
+    ldr w10, [x20, #B_KIND]
+    cbnz w9, .Lej_group
+    cmp w10, #BK_FOR
+    b.eq .Lej_found
+    cmp w10, #BK_LOOPS
+    b.eq .Lej_found
+    b .Lej_find
+.Lej_group:
+    cmp w10, #BK_GROUP
+    b.ne .Lej_find
+    ldr w9, [x19, #S_VAR]
+    ldr w10, [x20, #B_GIDX]
+    cmp w9, w10
+    b.ne .Lej_find
+.Lej_found:
+    ldr w0, [x20, #B_LABEL]
+    ldrh w9, [x19, #S_KIND]
+    cmp w9, #SK_CONTINUE
+    b.ne 1f
+    add w0, w0, #1
+1:  bl jump_to_label
+    WORD 0x14000000
+    LEAVE
+
+group_open:
+    ENTER
+    LDX x19, cg_cur
+    ldrh w9, [x19, #S_MODE]
+    cbz w9, .Lgo_done
+    LDX x9, cg_bdepth
+    mov x10, #B_SIZE
+    LA x11, cg_bstack
+    madd x20, x9, x10, x11
+    add x9, x9, #1
+    STX x9, cg_bdepth
+    ldr w9, [x19, #S_PIECES]
+    str w9, [x20, #B_END]
+    mov w9, #BK_GROUP
+    str w9, [x20, #B_KIND]
+    LDX x9, g_stmts
+    sub x9, x19, x9
+    lsr x9, x9, #5
+    str w9, [x20, #B_GIDX]
+    LDX x9, cg_label
+    str w9, [x20, #B_LABEL]
+    add x9, x9, #1
+    STX x9, cg_label
+    str wzr, [x20, #B_TAKE]
+    ldrh w9, [x19, #S_MODE]
+    tbz w9, #0, .Lgo_done
+    ldr w0, [x19, #S_VAR]
+    bl cg_var_off
+    str w0, [x20, #B_TAKE]
+.Lgo_done:
+    LEAVE
+
+take_store:
+    ENTER
+    mov x20, x0
+    ldr w1, [x20, #B_TAKE]
+    cbz w1, .Lts_done
+    mov w0, #10
+    bl e_addr
+    ldr w9, [x20, #B_DYN]
+    cbnz w9, 1f
+    mov w0, #9
+    ldr w1, [x20, #B_LIMIT]
+    bl e_mov32
+    WORD 0xB9000149
+    b .Lts_done
+1:  WORD 0xB9000140
+.Lts_done:
+    LEAVE
+
+take_clear:
+    ENTER
+    mov x20, x0
+    ldr w1, [x20, #B_TAKE]
+    cbz w1, 1f
+    mov w0, #10
+    bl e_addr
+    WORD 0xB900015F
+1:  LEAVE
 
 for_aliasable:
     stp x29, x30, [sp, #-16]!
@@ -1535,7 +1664,25 @@ emit_loop_head:
     mov w9, #-1
     str w9, [x20, #B_INIT]
     str w9, [x20, #B_ALIAS]
-    mov w9, #BK_LOOPS
+    str wzr, [x20, #B_LABEL]
+    str wzr, [x20, #B_TAKE]
+    ldrh w9, [x19, #S_MODE]
+    tbz w9, #0, 21f
+    LDX x9, cg_label
+    str w9, [x20, #B_LABEL]
+    add x9, x9, #2
+    STX x9, cg_label
+21: ldr w9, [x19, #S_MODETOK]
+    cbz w9, 22f
+    sub w9, w9, #1
+    LDX x10, g_stmts
+    add x10, x10, x9, lsl #5
+    ldrh w11, [x10, #S_MODE]
+    tbz w11, #0, 22f
+    ldr w0, [x10, #S_VAR]
+    bl cg_var_off
+    str w0, [x20, #B_TAKE]
+22: mov w9, #BK_LOOPS
     ldrh w10, [x19, #S_KIND]
     cmp w10, #SK_FOR
     b.ne 1f
@@ -1570,7 +1717,9 @@ emit_loop_head:
     str w9, [x20, #B_DYN]
     mov w0, w21
     bl emit_expr
-4:  ldr w9, [x20, #B_KIND]
+4:  mov x0, x20
+    bl take_store
+    ldr w9, [x20, #B_KIND]
     cmp w9, #BK_FOR
     b.eq .Llh_for
     ldr w22, [x20, #B_REG]
@@ -1703,7 +1852,11 @@ emit_loop_tail:
     b.eq 1f
     LDX x10, cg_vreg
     strb wzr, [x10, w9, uxtw]
-1:  ldr w22, [x20, #B_REG]
+1:  ldr w0, [x20, #B_LABEL]
+    cbz w0, 20f
+    add w0, w0, #1
+    bl place_label
+20: ldr w22, [x20, #B_REG]
     ldr w9, [x20, #B_KIND]
     cmp w9, #BK_FOR
     b.ne .Llt_loops

@@ -49,6 +49,8 @@
 #define TK_GE        42
 #define TK_ELIF      43
 #define TK_COMMA     44
+#define TK_BREAK     45
+#define TK_CONTINUE  46
 #define T_KIND       0
 #define T_COL        2
 #define T_LINE       4
@@ -68,6 +70,7 @@
 #define VK_CMP       7
 #define VK_OR        8
 #define VK_AND       9
+#define VK_TAKE      10
 #define CMP_IS       1
 #define CMP_ISNOT    2
 #define CMP_LT       3
@@ -90,10 +93,14 @@
 #define SK_FOR       5
 #define SK_LOOPS     6
 #define SK_ELSE      7
+#define SK_BREAK     8
+#define SK_CONTINUE  9
+#define SK_GROUP     10
 #define BK_IF        1
 #define BK_LOOP      2
 #define BK_FOR       3
 #define BK_LOOPS     4
+#define BK_GROUP     5
 #define MAX_REG_LOOPS 6
 #define S_KIND       0
 #define S_MODE       2

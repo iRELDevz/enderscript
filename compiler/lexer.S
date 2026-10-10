@@ -74,6 +74,10 @@ keywords:
     .ascii "else"
     .byte 4, TK_ELIF
     .ascii "elif"
+    .byte 5, TK_BREAK
+    .ascii "break"
+    .byte 8, TK_CONTINUE
+    .ascii "continue"
     .byte 0
 
     .globl escape_chars
