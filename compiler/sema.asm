@@ -38,6 +38,7 @@ s_str_if2    db "' inside an if block", 0
 s_in_loop2   db "' must be declared before the loop", 0
 s_str_loop2  db "' inside a loop", 0
 s_count1     db "loop count must be int, got ", 0
+s_in_bool    db "cannot read input into bool variable '", 0
 s_lvar1      db "loop variable '", 0
 s_lvar2      db "' must be int, it is declared as ", 0
 cmp_chars    db "   <><>"
@@ -1015,6 +1016,8 @@ XFUNC sema
     je .assign
     cmp eax, SK_GROUP
     je .group_stmt
+    cmp eax, SK_INPUT
+    je .input_stmt
     cmp eax, SK_BREAK
     je .jump_stmt
     cmp eax, SK_CONTINUE
@@ -1024,6 +1027,40 @@ XFUNC sema
 .jump_stmt:
     mov dword [sm_carry], 0
     jmp .next
+
+.input_stmt:
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call var_lookup
+    cmp eax, -1
+    je .assign
+    push ebx
+    mov ebx, [vr12]
+    mov [ebx + S_VAR], eax
+    pop ebx
+    shl eax, 5
+    add eax, [g_vars]
+    movzx eax, word [eax + VR_TYPE]
+    cmp eax, TY_BOOL
+    jne .out_parts
+    call msg_reset
+    lea ecx, [s_in_bool]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_quote]
+    call msg_addz
+    lea ecx, [s_semantic]
+    push ebx
+    mov ebx, [vr12]
+    mov edx, [ebx + S_TOK]
+    pop ebx
+    call diag_error_tok
 
 .group_stmt:
     mov dword [sm_carry], 0
@@ -1673,6 +1710,16 @@ XFUNC sema
     pop ebx
 .out_count:
     push ebx
+    mov ebx, [vr12]
+    cmp word [ebx + S_KIND], SK_INPUT
+    pop ebx
+    jne .carry_keep
+    push ebx
+    mov ebx, dword [vr15]
+    xor dword [vr15], ebx
+    pop ebx
+.carry_keep:
+    push ebx
     mov ebx, dword [vr15]
     mov [sm_carry], ebx
     pop ebx
@@ -1791,6 +1838,11 @@ XFUNC pool_compact
     push ebx
     mov ebx, [vr12]
     cmp word [ebx + S_KIND], SK_OUT
+    pop ebx
+    je .stmt_next
+    push ebx
+    mov ebx, [vr12]
+    cmp word [ebx + S_KIND], SK_INPUT
     pop ebx
     je .stmt_next
     push ebx

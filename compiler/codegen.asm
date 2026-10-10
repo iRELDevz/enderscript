@@ -15,10 +15,13 @@ extern pe_R, pe_D, pe_I, pe_T, pe_entry, pe_text_file, g_image
 %define RT_FN_FLUSH      16
 %define RT_FN_DIV_ZERO   20
 %define RT_FN_STR_EQ     24
+%define RT_FN_INPUT_STR  28
+%define RT_FN_INPUT_INT  32
 
-%define IAT_GETSTDHANDLE 56
-%define IAT_WRITEFILE    60
-%define IAT_EXITPROCESS  64
+%define IAT_GETSTDHANDLE 60
+%define IAT_WRITEFILE    64
+%define IAT_EXITPROCESS  68
+%define IAT_READFILE     72
 
 %define R_EAX 0
 %define R_ECX 1
@@ -74,6 +77,8 @@ cg_tmp    resd 4
 mg_tmp    resd 4
 mg_m      resd 1
 mg_s      resd 1
+cg_inuse  resd 1
+cg_inoff  resd 1
 cg_bstack resb B_SIZE * (MAX_NEST + 1)
 
 section .text
@@ -97,6 +102,27 @@ section .text
 %endmacro
 
 FUNC codegen
+    mov dword [cg_inuse], 0
+    mov eax, [g_stmts]
+    mov ecx, [g_nstmt]
+    shl ecx, 5
+    add ecx, eax
+.in_scan:
+    cmp eax, ecx
+    jae .in_done
+    cmp word [eax + S_KIND], SK_INPUT
+    je .in_found
+    add eax, S_SIZE
+    jmp .in_scan
+.in_found:
+    mov dword [cg_inuse], 1
+    mov eax, [g_vars_size]
+    add eax, 15
+    and eax, -16
+    mov [cg_inoff], eax
+    add eax, IN_SIZE
+    mov [g_vars_size], eax
+.in_done:
     call pe_layout
     mov edi, [g_image]
     add edi, [pe_text_file]
@@ -175,6 +201,25 @@ FUNC codegen
     mov edx, [pe_R]
     add edx, IMAGE_BASE
     call x86_imm32
+    cmp dword [cg_inuse], 0
+    je .no_input
+    BYTES 0xF66A, 2
+    mov edx, [pe_I]
+    add edx, IMAGE_BASE + IAT_GETSTDHANDLE
+    OPA 0x15FF, 2, edx
+    BYTES 0x244389, 3
+    mov edx, [pe_I]
+    add edx, IMAGE_BASE + IAT_READFILE
+    OPA 0xA1, 1, edx
+    BYTES 0x204389, 3
+    BYTES 0x2843C7, 3
+    mov edx, [cg_vars]
+    add edx, [cg_inoff]
+    call x86_imm32
+    BYTES 0x2C43C7, 3
+    mov edx, IN_SIZE
+    call x86_imm32
+.no_input:
 
     mov esi, [g_stmts]
     mov eax, [g_nstmt]
@@ -212,7 +257,13 @@ FUNC codegen
     je .jump
     cmp eax, SK_GROUP
     je .group
+    cmp eax, SK_INPUT
+    je .input
     call emit_store
+    jmp .next
+.input:
+    call emit_out_body
+    call emit_input
     jmp .next
 .jump:
     call emit_jump
@@ -1769,6 +1820,37 @@ emit_jump:
     pop esi
     ret
 
+emit_input:
+    push esi
+    push ebx
+    mov esi, [cg_cur]
+    mov eax, [esi + S_VAR]
+    mov ecx, eax
+    shl ecx, 5
+    add ecx, [g_vars]
+    movzx ebx, word [ecx + VR_TYPE]
+    call var_abs_idx
+    push eax
+    BYTES 0xBA, 1
+    mov edx, [cg_line]
+    call x86_imm32
+    pop edx
+    cmp ebx, TY_INT
+    je .int
+    BYTES 0xB9, 1
+    call x86_imm32
+    CALL_RT RT_FN_INPUT_STR
+    jmp .r
+.int:
+    push edx
+    CALL_RT RT_FN_INPUT_INT
+    pop edx
+    OPA 0xA3, 1, edx
+.r:
+    pop ebx
+    pop esi
+    ret
+
 group_open:
     push ebx
     mov ebx, [cg_cur]
@@ -1863,6 +1945,8 @@ for_aliasable:
     cmp esi, SK_DECL
     je .chk
     cmp esi, SK_ASSIGN
+    je .chk
+    cmp esi, SK_INPUT
     je .chk
     cmp esi, SK_FOR
     jne .l

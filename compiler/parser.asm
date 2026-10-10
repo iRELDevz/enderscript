@@ -409,12 +409,61 @@ XFUNC parse
     je .end_line
     cmp eax, TK_EOF
     je .end_line
+    cmp eax, TK_INPUT
+    je .input_value
     call parse_value
     call push_root
     push ebx
     mov ebx, [vr14]
     mov dword [ebx + S_NPARTS], 1
     pop ebx
+    jmp .end_line
+
+.input_value:
+    push esi
+    mov esi, [vr14]
+    mov ebx, [esi + S_TOK]
+    pop esi
+    push ebx
+    mov ebx, [vr14]
+    cmp word [ebx + S_KIND], SK_DECL
+    pop ebx
+    jne .input_fill
+    add dword [vr14], S_SIZE
+.input_fill:
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_KIND], SK_INPUT
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_MODE], 1
+    pop ebx
+    push esi
+    mov esi, [vr14]
+    mov [esi + S_TOK], ebx
+    pop esi
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_MODETOK], NO_TOKEN
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_VAR], 0
+    pop ebx
+    mov eax, [g_nroots]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_PARTS], eax
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPARTS], 0
+    pop ebx
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_SHR
+    je .out_body
     jmp .end_line
 
 .print_stmt:

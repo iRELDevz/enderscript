@@ -47,6 +47,7 @@ bits 32
 %define TK_COMMA    44
 %define TK_BREAK    45
 %define TK_CONTINUE 46
+%define TK_INPUT    47
 
 %define T_KIND      0
 %define T_COL       2
@@ -99,6 +100,7 @@ bits 32
 %define SK_BREAK    8
 %define SK_CONTINUE 9
 %define SK_GROUP    10
+%define SK_INPUT    11
 
 %define BK_IF       1
 %define BK_LOOP     2
@@ -157,6 +159,11 @@ bits 32
 %define RT_WRITTEN    20
 %define RT_GETSTD     24
 %define RT_EXIT       28
+%define RT_READFILE   32
+%define RT_STDIN      36
+%define RT_INPOS      40
+%define RT_INLEFT     44
+%define IN_SIZE       0x400000
 %define RT_BUF        64
 %define RT_BUF_SIZE   65536
 %define RT_VARS       (RT_BUF + RT_BUF_SIZE)
