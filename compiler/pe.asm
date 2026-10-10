@@ -5,7 +5,7 @@ extern rt_size
 
 %define FILE_ALIGN  0x200
 %define SECT_ALIGN  0x1000
-%define IDATA_SIZE  160
+%define IDATA_SIZE  192
 %define IMAGE_BASE  0x140000000
 
 section .bss
@@ -26,7 +26,7 @@ g_image_size  resq 1
 
 section .rdata
 idata_tpl:
-    times 104 db 0
+    times 120 db 0
     dw 0
     db "GetStdHandle", 0
     db 0
@@ -34,8 +34,12 @@ idata_tpl:
     db "WriteFile", 0
     dw 0
     db "ExitProcess", 0
+    dw 0
+    db "ReadFile", 0
+    db 0
     db "kernel32.dll", 0
     db 0
+    times 4 db 0
 
 section .text
 
@@ -145,9 +149,9 @@ FUNC pe_finish
     mov rax, [pe_I]
     mov [rsi + 120], eax
     mov dword [rsi + 124], 40
-    add eax, 72
+    add eax, 80
     mov [rsi + 208], eax
-    mov dword [rsi + 212], 32
+    mov dword [rsi + 212], 40
 
     lea rsi, [rbx + 0x148]
     mov rax, 0x61746164722E
@@ -201,17 +205,20 @@ FUNC pe_finish
     mov rax, [pe_I]
     lea ecx, [eax + 40]
     mov [r14], ecx
-    lea ecx, [eax + 146]
+    lea ecx, [eax + 174]
     mov [r14 + 12], ecx
-    lea ecx, [eax + 72]
+    lea ecx, [eax + 80]
     mov [r14 + 16], ecx
-    lea ecx, [eax + 104]
-    mov [r14 + 40], rcx
-    mov [r14 + 72], rcx
     lea ecx, [eax + 120]
-    mov [r14 + 48], rcx
+    mov [r14 + 40], rcx
     mov [r14 + 80], rcx
-    lea ecx, [eax + 132]
-    mov [r14 + 56], rcx
+    lea ecx, [eax + 136]
+    mov [r14 + 48], rcx
     mov [r14 + 88], rcx
+    lea ecx, [eax + 148]
+    mov [r14 + 56], rcx
+    mov [r14 + 96], rcx
+    lea ecx, [eax + 162]
+    mov [r14 + 64], rcx
+    mov [r14 + 104], rcx
     ENDF

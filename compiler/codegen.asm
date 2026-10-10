@@ -15,10 +15,13 @@ extern pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image
 %define RT_FN_FLUSH      16
 %define RT_FN_DIV_ZERO   20
 %define RT_FN_STR_EQ     24
+%define RT_FN_INPUT_STR  28
+%define RT_FN_INPUT_INT  32
 
-%define IAT_GETSTDHANDLE 72
-%define IAT_WRITEFILE    80
-%define IAT_EXITPROCESS  88
+%define IAT_GETSTDHANDLE 80
+%define IAT_WRITEFILE    88
+%define IAT_EXITPROCESS  96
+%define IAT_READFILE     104
 
 section .bss
 alignb 4
@@ -91,6 +94,7 @@ rg_n       resq 1
 cg_dleft   resd 1
 cg_nonneg  resd 1
 cg_extra   resq 1
+cg_inoff   resq 1
 sv_t       resd 1
 sv_sign    resd 1
 sv_tkind   resd 1
@@ -138,6 +142,27 @@ section .text
 
 FUNC codegen
     call pool_compact
+    mov qword [cg_inoff], 0
+    mov rax, [g_stmts]
+    mov rcx, [g_nstmt]
+    shl rcx, 5
+    add rcx, rax
+.in_scan:
+    cmp rax, rcx
+    jae .in_done
+    cmp word [rax + S_KIND], SK_INPUT
+    je .in_found
+    add rax, S_SIZE
+    jmp .in_scan
+.in_found:
+    mov rax, [g_vars_size]
+    add rax, 15
+    and rax, -16
+    lea rcx, [rax + RT_VARS]
+    mov [cg_inoff], rcx
+    add rax, IN_SIZE
+    mov [g_vars_size], rax
+.in_done:
     call pe_layout
     mov rdi, [g_image]
     add rdi, [pe_text_file]
@@ -250,6 +275,22 @@ FUNC codegen
     lea r13d, [r12d + IAT_EXITPROCESS]
     OPD 0x878B49, 3, r13d
     BYTES 0x20478949, 4
+    cmp qword [cg_inoff], 0
+    je .no_input
+    BYTES 0xFFFFFFF6B9, 5
+    lea r13d, [r12d + IAT_GETSTDHANDLE]
+    OPD 0x97FF41, 3, r13d
+    BYTES 0x30478949, 4
+    lea r13d, [r12d + IAT_READFILE]
+    OPD 0x878B49, 3, r13d
+    BYTES 0x28478949, 4
+    mov r13, [cg_inoff]
+    OPD 0x878D49, 3, r13d
+    BYTES 0x38478949, 4
+    BYTES 0x0447C741, 4
+    mov edx, IN_SIZE
+    call x64_imm32
+.no_input:
 
     mov rbx, [pe_R]
     sub rbx, [pe_D]
@@ -290,8 +331,16 @@ FUNC codegen
     je .jump
     cmp word [r12 + S_KIND], SK_GROUP
     je .group
+    cmp word [r12 + S_KIND], SK_INPUT
+    je .input
 
     call emit_store
+    jmp .next
+
+.input:
+    call sync_out
+    call emit_out_body
+    call emit_input
     jmp .next
 
 .jump:
@@ -1552,6 +1601,45 @@ emit_jump:
 .emit:
     call jump_to_label
     pop rsi
+    ret
+
+emit_input:
+    push rbx
+    push rsi
+    mov ecx, [r12 + S_VAR]
+    mov rdx, [cg_kvok]
+    mov byte [rdx + rcx], 0
+    mov rax, rcx
+    shl rax, 5
+    add rax, [g_vars]
+    mov ebx, [rax + VR_OFF]
+    add ebx, RT_VARS
+    movzx esi, word [rax + VR_TYPE]
+    BYTES 0xBA, 1
+    mov edx, [cg_line]
+    call x64_imm32
+    cmp esi, TY_INT
+    je .int
+    OPD 0x8F8D49, 3, ebx
+    CALL_RT RT_FN_INPUT_STR
+    jmp .r
+.int:
+    CALL_RT RT_FN_INPUT_INT
+    mov ecx, [r12 + S_VAR]
+    call var_reg
+    test eax, eax
+    js .mem
+    mov edx, eax
+    xor ecx, ecx
+    mov r9d, 0x89
+    mov r10d, 1
+    call emit_rrop
+    jmp .r
+.mem:
+    OPD 0x878941, 3, ebx
+.r:
+    pop rsi
+    pop rbx
     ret
 
 group_open:
@@ -3435,6 +3523,8 @@ kv_invalidate:
     je .kill
     cmp edx, SK_ASSIGN
     je .kill
+    cmp edx, SK_INPUT
+    je .kill
     cmp edx, SK_FOR
     jne .l
 .kill:
@@ -3508,6 +3598,8 @@ range_setup:
     inc ebx
     movzx edx, word [r12 + S_KIND]
     cmp edx, SK_FOR
+    je .bad_var
+    cmp edx, SK_INPUT
     je .bad_var
     cmp edx, SK_DECL
     je .assign
@@ -3997,6 +4089,8 @@ for_aliasable:
     cmp eax, SK_DECL
     je .chk
     cmp eax, SK_ASSIGN
+    je .chk
+    cmp eax, SK_INPUT
     je .chk
     cmp eax, SK_FOR
     jne .n
@@ -5376,6 +5470,8 @@ body_callfree:
     inc r13d
     movzx eax, word [rbx + S_KIND]
     cmp eax, SK_OUT
+    je .no
+    cmp eax, SK_INPUT
     je .no
     mov ecx, [rbx + S_PARTS]
     mov rdx, [g_roots]
