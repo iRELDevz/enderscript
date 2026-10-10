@@ -21,9 +21,37 @@ strs = ["s", "t"]
 bools = ["p", "q"]
 env = {"i": 3, "j": -7, "k": 100, "s": "ka", "t": None, "p": True, "q": False}
 STRS = ["ka", "a", "Hellowin", "", "x y"]
+CTX = []
+NEXT = [0]
+
+
+class Brk(Exception):
+    def __init__(self, t):
+        self.t = t
+
+
+class Cont(Exception):
+    def __init__(self, t):
+        self.t = t
+
+
+def new_id():
+    NEXT[0] += 1
+    return "#%d" % NEXT[0]
+
+
+def take_ref():
+    groups = [f for f in CTX if f[0] == "group"]
+    if groups and rng.random() < 0.8:
+        name = rng.choice(groups)[2]
+        key = [f for f in groups if f[2] == name][-1][1]
+        return name + ".takedata", lambda e, key=key: e.get(key, 0)
+    return "zz%d.takedata" % rng.randint(0, 9), lambda e: 0
 
 
 def int_operand():
+    if rng.random() < 0.06:
+        return take_ref()
     r = rng.random()
     if r < 0.4:
         n = rng.choice(ints)
@@ -133,7 +161,10 @@ def block(depth, indent):
             els = block(depth + 1, indent + step) if rng.random() < 0.4 else None
             out.append(("if", indent + "if " + text + rng.choice([":", " :"]), ev, sub, els, indent + rng.choice(["else:", "else :"]), elifs))
         elif r < 0.3 and depth < 4:
+            lid = new_id()
+            CTX.append(("loop", lid))
             sub = block(depth + 1, indent + rng.choice(["  ", "    ", "\t"]))
+            CTX.pop()
             cnt_text, cnt = rng.choice([
                 ("3", lambda e: 3),
                 ("0", lambda e: 0),
@@ -145,11 +176,17 @@ def block(depth, indent):
             kind = rng.random()
             if kind < 0.35:
                 v = rng.choice(ints)
-                out.append(("for", indent + "for %s in range(%s):" % (v, cnt_text), v, cnt, sub))
+                out.append(("for", indent + "for %s in range(%s):" % (v, cnt_text), v, cnt, sub, lid))
             elif kind < 0.7:
-                out.append(("loops", indent + "loops(%s):" % cnt_text, cnt, sub))
+                out.append(("loops", indent + "loops(%s):" % cnt_text, cnt, sub, lid))
             else:
                 name = "g%d" % rng.randint(0, 99)
+                if rng.random() < 0.4:
+                    olds = [f[2] for f in CTX if f[0] == "group"]
+                    if olds:
+                        name = rng.choice(olds)
+                gid = new_id()
+                CTX.append(("group", gid, name))
                 step = rng.choice(["", "  ", "\t"])
                 inner = indent + step + rng.choice(["", "  ", "    "])
                 parts = []
@@ -160,9 +197,28 @@ def block(depth, indent):
                         ("(-2)", lambda e: -2),
                         ("2", lambda e: 2),
                         ("i % 4", lambda e: e["i"] - int(e["i"] / 4) * 4),
+                        ("%s.takedata + 2" % name, lambda e: 2),
                     ])
-                    parts.append((indent + step + ct + "(", cf, block(depth + 1, inner), indent + step + ")"))
-                out.append(("group", indent + "loops(%s," % name, indent + step + "start." + name, parts, indent + step + "stop." + name, indent + ")"))
+                    bid = new_id()
+                    CTX.append(("loop", bid))
+                    body = block(depth + 1, inner)
+                    CTX.pop()
+                    parts.append((indent + step + ct + "(", cf, body, indent + step + ")", bid))
+                CTX.pop()
+                out.append(("group", indent + "loops(%s," % name, indent + step + "start." + name, parts, indent + step + "stop." + name, indent + ")", gid))
+        elif r < 0.36 and any(f[0] == "loop" for f in CTX):
+            lid = [f for f in CTX if f[0] == "loop"][-1][1]
+            if rng.random() < 0.55:
+                out.append(("brk", indent + "break", lid))
+            else:
+                out.append(("cont", indent + "continue", lid))
+        elif r < 0.39 and any(f[0] == "group" for f in CTX):
+            g = rng.choice([f for f in CTX if f[0] == "group"])
+            gid = [f for f in CTX if f[0] == "group" and f[2] == g[2]][-1][1]
+            out.append(("brk", indent + "break." + g[2], gid))
+        elif r < 0.42:
+            t, f = take_ref()
+            out.append(("ptd", indent + 'print>>"td="{%s}' % t, f))
         elif r < 0.5:
             n = rng.choice(ints)
             v = rng.choice([1, -1, 2, 10])
@@ -204,7 +260,7 @@ def render(items, lines):
             render(it[3], lines)
         elif it[0] == "group":
             lines.append(it[2])
-            for head, _, body, close in it[3]:
+            for head, _, body, close, _ in it[3]:
                 lines.append(head)
                 render(body, lines)
                 lines.append(close)
@@ -238,19 +294,50 @@ def run(items, e, out):
             n = it[3](e)
             for c in range(n):
                 e[it[2]] = c
-                run(it[4], e, out)
+                if body_run(it[4], e, out, it[5]):
+                    break
         elif it[0] == "loops":
             n = it[2](e)
             for _ in range(max(n, 0)):
-                run(it[3], e, out)
+                if body_run(it[3], e, out, it[4]):
+                    break
         elif it[0] == "group":
-            for _, cf, body, _ in it[3]:
-                for _ in range(max(cf(e), 0)):
-                    run(body, e, out)
+            gid = it[6]
+            try:
+                for _, cf, body, _, bid in it[3]:
+                    n = cf(e)
+                    e[gid] = n
+                    for _ in range(max(n, 0)):
+                        if body_run(body, e, out, bid):
+                            break
+                    e[gid] = 0
+            except Brk as b:
+                if b.t != gid:
+                    raise
+            e[gid] = 0
+        elif it[0] == "brk":
+            raise Brk(it[2])
+        elif it[0] == "cont":
+            raise Cont(it[2])
+        elif it[0] == "ptd":
+            out.append("td=%d" % it[2](e))
         elif it[0] == "set":
             e[it[2]] = it[3](e)
         else:
             out.append("%s=%s" % (it[2], show(e[it[2]])))
+
+
+def body_run(body, e, out, lid):
+    try:
+        run(body, e, out)
+    except Brk as b:
+        if b.t != lid:
+            raise
+        return True
+    except Cont as c:
+        if c.t != lid:
+            raise
+    return False
 
 
 lines = ['i.int = 3', 'j.int = -7', 'k.int = 100', 's.str = "ka"', 't.str =', 'p.bool = true', 'q.bool = false']

@@ -830,6 +830,8 @@ FUNC check_value
     b.eq .Lcheck_value_var
     cmp w9, #6
     b.eq .Lcheck_value_expr
+    cmp w9, #10
+    b.eq .Lcheck_value_take
     mov w23, #3
     cmp w9, #3
     b.eq .Lcheck_value_done
@@ -1008,6 +1010,29 @@ FUNC check_value
     mov x10, x19
     bl check_expr
     mov w23, w9
+    b .Lcheck_value_done
+
+.Lcheck_value_take:
+    mov w23, #1
+    ldur w16, [x19, #8]
+    mov w9, w16
+    cmn w9, #1
+    b.eq .Lcheck_value_take_zero
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_stmts
+    add x8, x8, :lo12:g_stmts
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldur w16, [x9, #8]
+    mov w9, w16
+    mov w17, #5
+    sturb w17, [x19, #0]
+    stur x9, [x19, #8]
+    b .Lcheck_value_done
+.Lcheck_value_take_zero:
+    eor w14, w14, w14
+    bl set_const
 
 .Lcheck_value_done:
     and w17, w23, #0xff
@@ -1311,7 +1336,68 @@ FUNC sema
     b.eq .Lsema_decl
     cmp w9, #2
     b.eq .Lsema_assign
+    cmp w9, #10
+    b.eq .Lsema_group_stmt
+    cmp w9, #8
+    b.eq .Lsema_jump_stmt
+    cmp w9, #9
+    b.eq .Lsema_jump_stmt
     b .Lsema_out
+
+.Lsema_jump_stmt:
+    mov x17, #0
+    adrp x8, sm_carry
+    add x8, x8, :lo12:sm_carry
+    str x17, [x8]
+    b .Lsema_next
+
+.Lsema_group_stmt:
+    mov x17, #0
+    adrp x8, sm_carry
+    add x8, x8, :lo12:sm_carry
+    str x17, [x8]
+    ldurh w16, [x23, #2]
+    mov w17, #1
+    tst w16, w17
+    b.eq .Lsema_next
+    adrp x8, g_nvars
+    add x8, x8, :lo12:g_nvars
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, g_nvars
+    add x8, x8, :lo12:g_nvars
+    ldr x17, [x8]
+    adds x17, x17, #1
+    adrp x8, g_nvars
+    add x8, x8, :lo12:g_nvars
+    str x17, [x8]
+    stur w9, [x23, #8]
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    mov x17, #0
+    stur x17, [x9, #0]
+    ldur w16, [x23, #4]
+    mov w10, w16
+    stur w10, [x9, #8]
+    mov w17, #1
+    sturh w17, [x9, #12]
+    adrp x8, g_vars_size
+    add x8, x8, :lo12:g_vars_size
+    ldr x16, [x8]
+    mov x10, x16
+    adds x10, x10, #3
+    ldr x16, =18446744073709551612
+    ands x10, x10, x16
+    stur w10, [x9, #16]
+    adds x10, x10, #4
+    adrp x8, g_vars_size
+    add x8, x8, :lo12:g_vars_size
+    str x10, [x8]
+    b .Lsema_next
 
 .Lsema_decl:
     mov x17, #0
