@@ -35,6 +35,8 @@ keywords:
     db 5, TK_LOOPS, "loops"
     db 4, TK_ELSE,  "else"
     db 4, TK_ELIF,  "elif"
+    db 5, TK_BREAK, "break"
+    db 8, TK_CONTINUE, "continue"
     db 0
 
 global escape_chars

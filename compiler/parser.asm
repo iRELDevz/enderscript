@@ -55,6 +55,12 @@ s_no_float    db "decimal numbers are not supported yet, use int", 0
 s_wrap        db "values next to text must be wrapped in '{ }'", 0
 s_exp_value   db "expected value", 0
 s_exp_number  db "expected number after '-'", 0
+s_brk_out     db "'break' outside a loop", 0
+s_cont_out    db "'continue' outside a loop", 0
+s_exp_bname   db "expected a loop name after 'break.'", 0
+s_no_group    db "no staged loop named '", 0
+s_no_group2   db "' around this 'break'", 0
+w_takedata    db "takedata", 0
 
 section .bss
 alignb 4
@@ -64,6 +70,7 @@ ps_depth resq 1
 ps_lastif resq 1
 ps_gn     resq 1
 ps_gstack resq 2 * (MAX_BLOCKS + 1)
+ps_gstmt  resq MAX_BLOCKS + 1
 ps_pflag  resb MAX_BLOCKS + 1
 ps_vn     resq 1
 ps_vstack resq 2 * (MAX_ELIF + 1)
@@ -185,7 +192,154 @@ XFUNC parse
     je .print_stmt
     cmp eax, TK_SHOW
     je .show_stmt
+    cmp eax, TK_BREAK
+    je .break_stmt
+    cmp eax, TK_CONTINUE
+    je .continue_stmt
     SYNERR s_exp_stmt
+
+.continue_stmt:
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_KIND], SK_CONTINUE
+    pop ebx
+    lea esi, [s_cont_out]
+    jmp .jump_stmt
+.break_stmt:
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_KIND], SK_BREAK
+    pop ebx
+    lea esi, [s_brk_out]
+.jump_stmt:
+    push ebx
+    push esi
+    mov ebx, [vr14]
+    mov esi, dword [vr13]
+    mov [ebx + S_TOK], esi
+    pop esi
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_MODE], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPARTS], 0
+    pop ebx
+    mov eax, [g_nroots]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_PARTS], eax
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_PIECES], 0
+    pop ebx
+    inc dword [vr13]
+    push ebx
+    mov ebx, [vr14]
+    cmp word [ebx + S_KIND], SK_BREAK
+    pop ebx
+    jne .jump_inner
+    CUR
+    cmp eax, TK_DOT
+    je .break_group
+.jump_inner:
+    mov ecx, [ps_depth]
+.jump_find:
+    test ecx, ecx
+    jz .jump_none
+    dec ecx
+    lea edx, [ps_stack]
+    mov eax, [edx + ecx * 8]
+    mov edx, eax
+    shl edx, 5
+    add edx, [g_stmts]
+    cmp word [edx + S_KIND], SK_FOR
+    je .jump_found
+    cmp word [edx + S_KIND], SK_LOOPS
+    jne .jump_find
+.jump_found:
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_VAR], eax
+    pop ebx
+    or word [edx + S_MODE], 1
+    jmp .end_line
+.jump_none:
+    mov ecx, esi
+    push ebx
+    mov ebx, [vr14]
+    mov edx, [ebx + S_TOK]
+    pop ebx
+    jmp syn_error
+.break_group:
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_IDENT
+    je .bg_name
+    SYNERR s_exp_bname
+.bg_name:
+    mov esi, [ps_gn]
+.bg_find:
+    test esi, esi
+    jz .bg_none
+    dec esi
+    mov eax, esi
+    shl eax, 4
+    lea ecx, [ps_gstack]
+    mov ecx, [ecx + eax]
+    mov edx, dword [vr13]
+    call tok_same
+    jne .bg_find
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_MODE], 1
+    pop ebx
+    lea ecx, [ps_gstmt]
+    mov eax, [ecx + esi * 8]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_VAR], eax
+    pop ebx
+    shl eax, 5
+    add eax, [g_stmts]
+    or word [eax + S_MODE], 2
+    shl esi, 4
+    lea ecx, [ps_gstack]
+    mov ecx, [ecx + esi + 8]
+.bg_flag:
+    cmp ecx, [ps_depth]
+    jae .bg_done
+    lea edx, [ps_stack]
+    mov eax, [edx + ecx * 8]
+    shl eax, 5
+    add eax, [g_stmts]
+    cmp word [eax + S_KIND], SK_FOR
+    je .bg_mark
+    cmp word [eax + S_KIND], SK_LOOPS
+    jne .bg_next
+.bg_mark:
+    or word [eax + S_MODE], 1
+.bg_next:
+    inc ecx
+    jmp .bg_flag
+.bg_done:
+    inc dword [vr13]
+    jmp .end_line
+.bg_none:
+    mov ebx, dword [vr13]
+    call msg_reset
+    lea ecx, [s_no_group]
+    call msg_addz
+    mov ecx, ebx
+    call msg_tok
+    lea ecx, [s_no_group2]
+    call msg_addz
+    lea ecx, [s_syntax]
+    mov edx, ebx
+    call diag_error_tok
 
 .var_stmt:
     push ebx
@@ -520,6 +674,49 @@ XFUNC parse
     jb .gs_room
     SYNERR s_too_many_or
 .gs_room:
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_KIND], SK_GROUP
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_MODE], 0
+    pop ebx
+    push esi
+    mov esi, [vr14]
+    mov [esi + S_TOK], ebx
+    pop esi
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_VAR], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPARTS], 0
+    pop ebx
+    mov edx, [g_nroots]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_PARTS], edx
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_PIECES], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_MODETOK], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPIECES], 0
+    pop ebx
+    lea ecx, [ps_gstmt]
+    mov edx, dword [vr14]
+    sub edx, [g_stmts]
+    shr edx, 5
+    mov [ecx + eax * 8], edx
+    add dword [vr14], S_SIZE
     shl eax, 4
     lea ecx, [ps_gstack]
     mov [ecx + eax], ebx
@@ -602,6 +799,15 @@ XFUNC parse
 .stop_close:
     inc dword [vr13]
     dec dword [ps_gn]
+    mov eax, [ps_gn]
+    lea ecx, [ps_gstmt]
+    mov eax, [ecx + eax * 8]
+    shl eax, 5
+    add eax, [g_stmts]
+    mov ecx, dword [vr14]
+    sub ecx, [g_stmts]
+    shr ecx, 5
+    mov [eax + S_PIECES], ecx
     CUR
     cmp eax, TK_NL
     je .stmt
@@ -652,6 +858,10 @@ XFUNC parse
     pop ebx
     push ebx
     mov ebx, [vr14]
+    mov word [ebx + S_MODE], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
     mov dword [ebx + S_PIECES], 0
     pop ebx
     push ebx
@@ -660,6 +870,14 @@ XFUNC parse
     mov esi, dword [vr13]
     mov [ebx + S_TOK], esi
     pop esi
+    pop ebx
+    mov eax, [ps_gn]
+    lea ecx, [ps_gstmt]
+    mov eax, [ecx + eax * 8 - 8]
+    inc eax
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_MODETOK], eax
     pop ebx
     mov eax, [g_nroots]
     push ebx
@@ -900,6 +1118,14 @@ XFUNC parse
     pop ebx
     push ebx
     mov ebx, [vr14]
+    mov word [ebx + S_MODE], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_MODETOK], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
     mov dword [ebx + S_PIECES], 0
     pop ebx
     inc dword [vr13]
@@ -939,6 +1165,14 @@ XFUNC parse
     push ebx
     mov ebx, [vr14]
     mov word [ebx + S_KIND], SK_LOOPS
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_MODE], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_MODETOK], 0
     pop ebx
     push ebx
     mov ebx, [vr14]
@@ -1377,7 +1611,7 @@ parse_primary:
     je .leaf
     mov ecx, VK_VAR
     cmp eax, TK_IDENT
-    je .leaf
+    je .ident
     cmp eax, TK_TRUE
     je .true
     cmp eax, TK_FALSE
@@ -1404,6 +1638,78 @@ parse_primary:
     ret
 .fnum:
     SYNERR s_no_float
+.ident:
+    push ebx
+    mov ebx, [vr13]
+    lea eax, [ebx + 1]
+    pop ebx
+    shl eax, 4
+    push ebx
+    mov ebx, [vr12]
+    cmp word [ebx + eax], TK_DOT
+    pop ebx
+    jne .leaf
+    push ebx
+    mov ebx, [vr12]
+    cmp word [ebx + eax + 16], TK_IDENT
+    pop ebx
+    jne .leaf
+    push ebx
+    mov ebx, [vr13]
+    lea ecx, [ebx + 2]
+    pop ebx
+    lea edx, [w_takedata]
+    mov dword [vr8], 8
+    call tok_word
+    mov ecx, VK_VAR
+    jne .leaf
+    push esi
+    mov esi, [ps_gn]
+.take_find:
+    mov eax, -1
+    test esi, esi
+    jz .take_set
+    dec esi
+    mov eax, esi
+    shl eax, 4
+    lea ecx, [ps_gstack]
+    mov ecx, [ecx + eax]
+    mov edx, dword [vr13]
+    call tok_same
+    jne .take_find
+    lea ecx, [ps_gstmt]
+    mov eax, [ecx + esi * 8]
+.take_set:
+    pop esi
+    mov dword [vr9], eax
+    mov ecx, VK_TAKE
+    mov edx, dword [vr13]
+    call new_node
+    push ebx
+    push esi
+    mov ebx, [vr10]
+    mov esi, dword [vr9]
+    mov [ebx + V_DATA], esi
+    pop esi
+    pop ebx
+    cmp dword [vr9], -1
+    je .take_done
+    push ebx
+    mov ebx, dword [vr9]
+    mov dword [vr8], ebx
+    pop ebx
+    shl dword [vr8], 5
+    push ebx
+    mov ebx, [g_stmts]
+    add dword [vr8], ebx
+    pop ebx
+    push ebx
+    mov ebx, [vr8]
+    or word [ebx + S_MODE], 1
+    pop ebx
+.take_done:
+    add dword [vr13], 3
+    ret
 
 parse_string:
     mov ecx, VK_STR

@@ -33,6 +33,9 @@ extern el_R_va, el_T_off, el_T_va, el_D_va, el_entry, g_image
 %define B_INIT   28
 %define B_ALIAS  32
 %define B_IFIDX  36
+%define B_LABEL  40
+%define B_TAKE   44
+%define B_GIDX   48
 %define B_SIZE   64
 
 section .bss
@@ -104,11 +107,13 @@ FUNC codegen
     call mem_alloc
     mov [cg_patch], eax
     mov ecx, [g_nparts]
+    add ecx, [g_nstmt]
     add ecx, 16
     shl ecx, 3
     call mem_alloc
     mov [cg_lp], eax
     mov ecx, [g_nparts]
+    add ecx, [g_nstmt]
     add ecx, 16
     lea eax, [eax + ecx * 4]
     mov [cg_lpl], eax
@@ -177,7 +182,19 @@ FUNC codegen
     je .loop
     cmp eax, SK_ELSE
     je .next
+    cmp eax, SK_BREAK
+    je .jump
+    cmp eax, SK_CONTINUE
+    je .jump
+    cmp eax, SK_GROUP
+    je .group
     call emit_store
+    jmp .next
+.jump:
+    call emit_jump
+    jmp .next
+.group:
+    call group_open
     jmp .next
 .out:
     call emit_out_body
@@ -1637,6 +1654,8 @@ close_blocks:
     lea esi, [cg_bstack + eax]
     cmp [esi + B_END], ebx
     jne .done
+    cmp dword [esi + B_KIND], BK_GROUP
+    je .close_group
     cmp dword [esi + B_KIND], BK_IF
     jne .close_loop
     call else_of
@@ -1670,14 +1689,115 @@ close_blocks:
     mov [cg_npatch], ecx
     dec dword [cg_bdepth]
     jmp .loop
+.close_group:
+    mov ecx, [esi + B_LABEL]
+    call place_label
+    call take_clear
+    dec dword [cg_bdepth]
+    jmp .loop
 .close_loop:
     call emit_loop_tail
+    mov ecx, [esi + B_LABEL]
+    test ecx, ecx
+    jz .no_exit
+    call place_label
+.no_exit:
+    call take_clear
     dec dword [cg_bdepth]
     dec dword [cg_ldepth]
     jmp .loop
 .done:
     pop ebx
     pop esi
+    ret
+
+emit_jump:
+    push esi
+    push ebx
+    mov ebx, [cg_cur]
+    mov eax, [cg_bdepth]
+    imul eax, eax, B_SIZE
+    lea esi, [cg_bstack + eax]
+.find:
+    sub esi, B_SIZE
+    cmp word [ebx + S_MODE], 0
+    jne .group
+    cmp dword [esi + B_KIND], BK_FOR
+    je .found
+    cmp dword [esi + B_KIND], BK_LOOPS
+    je .found
+    jmp .find
+.group:
+    cmp dword [esi + B_KIND], BK_GROUP
+    jne .find
+    mov eax, [ebx + S_VAR]
+    cmp [esi + B_GIDX], eax
+    jne .find
+.found:
+    BYTES 0xE9, 1
+    mov ecx, [esi + B_LABEL]
+    cmp word [ebx + S_KIND], SK_CONTINUE
+    jne .emit
+    inc ecx
+.emit:
+    call jump_to_label
+    pop ebx
+    pop esi
+    ret
+
+group_open:
+    push ebx
+    mov ebx, [cg_cur]
+    cmp word [ebx + S_MODE], 0
+    je .r
+    mov eax, [cg_bdepth]
+    imul eax, eax, B_SIZE
+    lea ecx, [cg_bstack + eax]
+    inc dword [cg_bdepth]
+    mov edx, [ebx + S_PIECES]
+    mov [ecx + B_END], edx
+    mov dword [ecx + B_KIND], BK_GROUP
+    mov edx, ebx
+    sub edx, [g_stmts]
+    shr edx, 5
+    mov [ecx + B_GIDX], edx
+    mov edx, [cg_label]
+    mov [ecx + B_LABEL], edx
+    inc dword [cg_label]
+    mov dword [ecx + B_TAKE], 0
+    test word [ebx + S_MODE], 1
+    jz .r
+    push ecx
+    mov eax, [ebx + S_VAR]
+    call var_abs_idx
+    pop ecx
+    mov [ecx + B_TAKE], eax
+.r:
+    pop ebx
+    ret
+
+take_store:
+    mov edx, [esi + B_TAKE]
+    test edx, edx
+    jz .r
+    cmp dword [esi + B_DYN], 0
+    jne .dyn
+    OPA 0x05C7, 2, edx
+    mov edx, [esi + B_LIMIT]
+    jmp x86_imm32
+.dyn:
+    OPA 0xA3, 1, edx
+.r:
+    ret
+
+take_clear:
+    mov edx, [esi + B_TAKE]
+    test edx, edx
+    jz .r
+    OPA 0x05C7, 2, edx
+    xor edx, edx
+    jmp x86_imm32
+.r:
     ret
 
 else_of:
@@ -1752,6 +1872,26 @@ emit_loop_head:
     mov [esi + B_END], edx
     mov dword [esi + B_INIT], -1
     mov dword [esi + B_ALIAS], -1
+    mov dword [esi + B_LABEL], 0
+    mov dword [esi + B_TAKE], 0
+    test word [ebx + S_MODE], 1
+    jz .no_label
+    mov eax, [cg_label]
+    mov [esi + B_LABEL], eax
+    add dword [cg_label], 2
+.no_label:
+    mov eax, [ebx + S_MODETOK]
+    test eax, eax
+    jz .no_take
+    dec eax
+    shl eax, 5
+    add eax, [g_stmts]
+    test word [eax + S_MODE], 1
+    jz .no_take
+    mov eax, [eax + S_VAR]
+    call var_abs_idx
+    mov [esi + B_TAKE], eax
+.no_take:
     mov dword [esi + B_KIND], BK_LOOPS
     cmp word [ebx + S_KIND], SK_FOR
     jne .kind_set
@@ -1786,6 +1926,7 @@ emit_loop_head:
     mov dword [esi + B_DYN], 1
     call emit_expr
 .count_ready:
+    call take_store
     cmp dword [esi + B_KIND], BK_FOR
     je .for_head
     cmp dword [esi + B_DYN], 0
@@ -1931,6 +2072,12 @@ emit_loop_tail:
     mov eax, [cg_vreg]
     mov byte [eax + ecx], 0
 .no_alias:
+    mov ecx, [esi + B_LABEL]
+    test ecx, ecx
+    jz .no_cont
+    inc ecx
+    call place_label
+.no_cont:
     cmp dword [esi + B_KIND], BK_FOR
     jne .loops_tail
     cmp dword [esi + B_REG], NOREG
