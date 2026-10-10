@@ -36,6 +36,7 @@ keywords:
     db 4, TK_ELIF,  "elif"
     db 5, TK_BREAK, "break"
     db 8, TK_CONTINUE, "continue"
+    db 5, TK_INPUT, "input"
     db 0
 
 global escape_chars
