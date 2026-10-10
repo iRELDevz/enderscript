@@ -22,7 +22,7 @@ function Show-Text([string]$Text) {
     return $Text
 }
 
-function Invoke-Native([string]$Exe, [string[]]$Arguments, [string]$WorkingDirectory) {
+function Invoke-Native([string]$Exe, [string[]]$Arguments, [string]$WorkingDirectory, [string]$InputText = $null) {
     $quoted = @()
     foreach ($a in $Arguments) {
         if ($a -eq '' -or $a -match '\s') { $quoted += ('"' + $a + '"') } else { $quoted += $a }
@@ -35,7 +35,10 @@ function Invoke-Native([string]$Exe, [string[]]$Arguments, [string]$WorkingDirec
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
     $proc = [System.Diagnostics.Process]::Start($psi)
+    if ($InputText) { $proc.StandardInput.Write($InputText) }
+    $proc.StandardInput.Close()
     $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
     $stderrTask = $proc.StandardError.ReadToEndAsync()
     $proc.WaitForExit()
@@ -154,7 +157,10 @@ foreach ($f in $runCases) {
         Write-Result $label $false @('missing ' + $name + '.out')
         continue
     }
-    $r = Invoke-Native $exe @() $f.DirectoryName
+    $inPath = Join-Path $f.DirectoryName ($name + '.in')
+    $inText = $null
+    if (Test-Path -LiteralPath $inPath) { $inText = [System.IO.File]::ReadAllText($inPath) }
+    $r = Invoke-Native $exe @() $f.DirectoryName $inText
     $expected = Normalize-Text $expectedOut
     $actual = Normalize-Text $r.Stdout
     $ok = ($r.ExitCode -eq 0 -and $actual -eq $expected)

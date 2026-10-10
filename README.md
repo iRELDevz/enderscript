@@ -49,7 +49,7 @@ The same syntax and results on Windows and Linux, for x64, x86, and ARM64.
 
 ### Not available yet
 
-Functions, arrays, decimal numbers, and user input.
+Functions, arrays, and decimal numbers.
 
 ## Target
 
@@ -287,12 +287,26 @@ stop.ins
 - `name.takedata` holds the N of the `N(` block that is running in the staged loop `name`. The example above prints `3` three times, then `b2` once before `break.ins`.
 - Outside a block, its value is 0.
 
+### Input
+
+```
+nama.str = input>>"Siapa namamu? "
+umur.int = input>>"Umur: "
+print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
+```
+
+- `x.str = input>>"text"` prints the text without a newline, then reads one line from the keyboard or stdin. `x = input>>"text"` reassigns an existing variable, and `x.str = input` reads without a prompt.
+- The prompt is written like `show>>`, so it can contain values in `{ }`.
+- For an `int` variable, the number is read from the start of the line (spaces and a `-` or `+` sign are allowed). If there is no number, the result is 0.
+- An empty line gives `""`. When the input has ended, a `str` gets `null` and an `int` gets 0.
+- A `bool` variable cannot be read from input.
+
 ### General rules
 
 - One statement per line. Empty lines are ignored.
 - Comments start with `//` and run to the end of the line.
 - The program runs from the first line to the last, without a `main` function.
-- Keywords: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`.
+- Keywords: `print show int str bool true false null if elif else is isnot and or for in range loops break continue input`.
 
 ### Error messages
 
@@ -361,7 +375,7 @@ Sintaks dan hasil yang sama di Windows dan Linux, untuk x64, x86, dan ARM64.
 
 ### Yang belum ada
 
-Fungsi, array, bilangan desimal, dan input pengguna belum tersedia.
+Fungsi, array, dan bilangan desimal belum tersedia.
 
 ## Target
 
@@ -599,12 +613,26 @@ stop.ins
 - `nama.takedata` berisi N dari blok `N(` yang sedang jalan di loop bertahap `nama`. Contoh di atas mencetak `3` tiga kali, lalu `b2` sekali sebelum `break.ins`.
 - Di luar blok, nilainya 0.
 
+### Input
+
+```
+nama.str = input>>"Siapa namamu? "
+umur.int = input>>"Umur: "
+print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
+```
+
+- `x.str = input>>"teks"` mencetak teks tanpa baris baru, lalu membaca satu baris dari keyboard atau stdin. `x = input>>"teks"` mengisi ulang variabel yang sudah ada, dan `x.str = input` membaca tanpa teks.
+- Teks pertanyaan ditulis seperti `show>>`, jadi boleh berisi nilai dalam `{ }`.
+- Untuk variabel `int`, angka dibaca dari awal baris (spasi dan tanda `-` atau `+` boleh). Kalau tidak ada angka, hasilnya 0.
+- Baris kosong menghasilkan `""`. Kalau input sudah habis, `str` berisi `null` dan `int` berisi 0.
+- Variabel `bool` tidak bisa diisi dari input.
+
 ### Aturan umum
 
 - Satu statement per baris. Baris kosong diabaikan.
 - Komentar diawali `//` sampai akhir baris.
 - Program berjalan dari baris pertama sampai terakhir, tanpa fungsi `main`.
-- Keyword: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`.
+- Keyword: `print show int str bool true false null if elif else is isnot and or for in range loops break continue input`.
 
 ### Pesan error
 
@@ -673,7 +701,7 @@ Windows と Linux の x64、x86、ARM64 で、同じ構文と同じ結果にな�
 
 ### まだないもの
 
-関数、配列、小数、ユーザー入力。
+関数、配列、小数。
 
 ## ターゲット
 
@@ -911,12 +939,26 @@ stop.ins
 - `名前.takedata` は段階ループ `名前` で実行中の `N(` ブロックの N を持ちます。上の例は `3` を 3 回表示し、`break.ins` の前に `b2` を 1 回表示します。
 - ブロックの外では値は 0 です。
 
+### 入力
+
+```
+nama.str = input>>"Siapa namamu? "
+umur.int = input>>"Umur: "
+print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
+```
+
+- `x.str = input>>"テキスト"` はテキストを改行なしで表示し、キーボードまたは stdin から 1 行読み込みます。`x = input>>"テキスト"` は既存の変数に再代入し、`x.str = input` はプロンプトなしで読み込みます。
+- プロンプトは `show>>` と同じ書き方なので、`{ }` で値を含められます。
+- `int` 変数では、行の先頭から数値を読み取ります (空白と `-` または `+` の符号は使えます)。数値がなければ結果は 0 です。
+- 空行は `""` になります。入力が終わっている場合、`str` は `null`、`int` は 0 になります。
+- `bool` 変数は入力から読み込めません。
+
 ### 一般的なルール
 
 - 1 行に 1 文です。空行は無視されます。
 - コメントは `//` から行末までです。
 - プログラムは `main` 関数なしで、最初の行から最後の行まで実行されます。
-- キーワード: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`。
+- キーワード: `print show int str bool true false null if elif else is isnot and or for in range loops break continue input`。
 
 ### エラーメッセージ
 
@@ -985,7 +1027,7 @@ Windows x64 上的基准测试结果:
 
 ### 尚未支持
 
-函数、数组、小数和用户输入。
+函数、数组和小数。
 
 ## 目标平台
 
@@ -1223,12 +1265,26 @@ stop.ins
 - `名称.takedata` 是分段循环 `名称` 中正在运行的 `N(` 代码块的 N。上面的例子先输出 `3` 三次，然后在 `break.ins` 之前输出一次 `b2`。
 - 在代码块之外，它的值为 0。
 
+### 输入
+
+```
+nama.str = input>>"Siapa namamu? "
+umur.int = input>>"Umur: "
+print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
+```
+
+- `x.str = input>>"文本"` 输出文本 (不换行)，然后从键盘或 stdin 读取一行。`x = input>>"文本"` 给已有变量重新赋值，`x.str = input` 不带提示直接读取。
+- 提示的写法与 `show>>` 相同，因此可以用 `{ }` 包含值。
+- 对于 `int` 变量，从行首读取数字 (允许空格和 `-` 或 `+` 符号)。如果没有数字，结果为 0。
+- 空行得到 `""`。输入结束后，`str` 得到 `null`，`int` 得到 0。
+- `bool` 变量不能从输入读取。
+
 ### 通用规则
 
 - 每行一条语句。空行会被忽略。
 - 注释以 `//` 开头，直到行尾。
 - 程序从第一行运行到最后一行，不需要 `main` 函数。
-- 关键字: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`。
+- 关键字: `print show int str bool true false null if elif else is isnot and or for in range loops break continue input`。
 
 ### 错误信息
 
@@ -1297,7 +1353,7 @@ Windows और Linux पर x64, x86 और ARM64 के लिए एक जै
 
 ### अभी उपलब्ध नहीं
 
-फ़ंक्शन, ऐरे, दशमलव संख्याएँ और उपयोगकर्ता इनपुट।
+फ़ंक्शन, ऐरे और दशमलव संख्याएँ।
 
 ## लक्ष्य
 
@@ -1535,12 +1591,26 @@ stop.ins
 - `नाम.takedata` में चरणबद्ध लूप `नाम` में चल रहे `N(` ब्लॉक का N होता है। ऊपर का उदाहरण `3` तीन बार छापता है, फिर `break.ins` से पहले `b2` एक बार।
 - ब्लॉक के बाहर इसका मान 0 है।
 
+### इनपुट
+
+```
+nama.str = input>>"Siapa namamu? "
+umur.int = input>>"Umur: "
+print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
+```
+
+- `x.str = input>>"टेक्स्ट"` टेक्स्ट को बिना नई लाइन के छापता है, फिर कीबोर्ड या stdin से एक लाइन पढ़ता है। `x = input>>"टेक्स्ट"` मौजूदा वेरिएबल को दोबारा मान देता है, और `x.str = input` बिना प्रॉम्प्ट के पढ़ता है।
+- प्रॉम्प्ट `show>>` की तरह लिखा जाता है, इसलिए उसमें `{ }` में मान हो सकते हैं।
+- `int` वेरिएबल के लिए संख्या लाइन की शुरुआत से पढ़ी जाती है (स्पेस और `-` या `+` चिह्न चलते हैं)। संख्या न हो तो परिणाम 0 है।
+- खाली लाइन से `""` मिलता है। इनपुट ख़त्म होने पर `str` में `null` और `int` में 0 आता है।
+- `bool` वेरिएबल को इनपुट से नहीं पढ़ा जा सकता।
+
 ### सामान्य नियम
 
 - हर लाइन में एक स्टेटमेंट। खाली लाइनें अनदेखी की जाती हैं।
 - टिप्पणी `//` से शुरू होकर लाइन के अंत तक चलती है।
 - प्रोग्राम पहली लाइन से आख़िरी लाइन तक चलता है, `main` फ़ंक्शन के बिना।
-- कीवर्ड: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`।
+- कीवर्ड: `print show int str bool true false null if elif else is isnot and or for in range loops break continue input`।
 
 ### त्रुटि संदेश
 

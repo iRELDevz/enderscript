@@ -720,10 +720,47 @@ FUNC parse
     b.eq .Lparse_end_line
     cmp w9, #0
     b.eq .Lparse_end_line
+    cmp w9, #47
+    b.eq .Lparse_input_value
     bl parse_value
     bl push_root
     mov w17, #1
     stur w17, [x25, #12]
+    b .Lparse_end_line
+
+.Lparse_input_value:
+    ldur w16, [x25, #4]
+    mov w19, w16
+    ldurh w16, [x25, #0]
+    cmp w16, #1
+    b.ne .Lparse_input_fill
+    adds x25, x25, #32
+.Lparse_input_fill:
+    mov w17, #11
+    sturh w17, [x25, #0]
+    mov w17, #1
+    sturh w17, [x25, #2]
+    stur w19, [x25, #4]
+    ldr w17, =4294967295
+    stur w17, [x25, #20]
+    mov w17, #0
+    stur w17, [x25, #8]
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x16, [x8]
+    mov x9, x16
+    stur w9, [x25, #16]
+    mov w17, #0
+    stur w17, [x25, #12]
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #8
+    b.eq .Lparse_out_body
     b .Lparse_end_line
 
 .Lparse_print_stmt:

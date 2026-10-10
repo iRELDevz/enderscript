@@ -7,6 +7,8 @@
 #define RT_FN_FLUSH      16
 #define RT_FN_DIV_ZERO   20
 #define RT_FN_STR_EQ     24
+#define RT_FN_INPUT_STR  28
+#define RT_FN_INPUT_INT  32
 
 #define OP_STR_W   0xB9000000
 #define OP_LDR_W   0xB9400000
@@ -54,6 +56,7 @@ cg_lp:      .zero 8
 cg_lpl:     .zero 8
 cg_nlp:     .zero 8
 cg_label:   .zero 8
+cg_inoff:   .zero 8
 cg_vreg:    .zero 8
 cg_cur:     .zero 8
 cg_end:     .zero 8
@@ -102,7 +105,26 @@ cg_bstack:  .zero B_SIZE * (MAX_NEST + 1)
 .endm
 
 FUNC codegen
-    bl img_layout
+    STX xzr, cg_inoff
+    LDX x9, g_stmts
+    LDX x10, g_nstmt
+    add x10, x9, x10, lsl #5
+62: cmp x9, x10
+    b.hs 64f
+    ldrh w11, [x9, #S_KIND]
+    cmp w11, #SK_INPUT
+    b.eq 63f
+    add x9, x9, #32
+    b 62b
+63: LDX x9, g_vars_size
+    add x9, x9, #15
+    and x9, x9, #~15
+    add x10, x9, #RT_VARS
+    STX x10, cg_inoff
+    MOV32 w11, IN_SIZE
+    add x9, x9, x11
+    STX x9, g_vars_size
+64: bl img_layout
     LDX x27, g_image
     LDX x9, img_T_off
     add x27, x27, x9
@@ -190,6 +212,30 @@ FUNC codegen
     bl e_ldr_va
     LDST OP_STR_X, 16, 28, 7
 #endif
+    LDX x9, cg_inoff
+    cbz x9, 61f
+#if defined(TARGET_WINDOWS)
+    WORD 0x12800120
+    mov w0, #16
+    LDX x1, img_iat_va
+    bl e_ldr_va
+    WORD 0xD63F0200
+    LDST OP_STR_X, 0, 28, 9
+    mov w0, #16
+    LDX x1, img_iat_va
+    add x1, x1, #24
+    bl e_ldr_va
+    LDST OP_STR_X, 16, 28, 8
+#endif
+    mov w0, #9
+    LDX x1, cg_inoff
+    bl e_addr
+    LDST OP_STR_X, 9, 28, 10
+    mov w0, #9
+    MOV32 w1, IN_SIZE
+    bl e_mov32
+    LDST OP_STR_W, 9, 28, 22
+61:
 
     LDX x19, g_stmts
     LDX x20, g_nstmt
@@ -227,7 +273,13 @@ FUNC codegen
     b.eq .Lcg_jump
     cmp w9, #SK_GROUP
     b.eq .Lcg_group
+    cmp w9, #SK_INPUT
+    b.eq .Lcg_input
     bl emit_store
+    b .Lcg_next
+.Lcg_input:
+    bl emit_out_body
+    bl emit_input
     b .Lcg_next
 .Lcg_jump:
     bl emit_jump
@@ -1529,6 +1581,35 @@ emit_jump:
     WORD 0x14000000
     LEAVE
 
+emit_input:
+    ENTER
+    LDX x19, cg_cur
+    ldr w0, [x19, #S_VAR]
+    LDX x10, g_vars
+    add x9, x10, x0, lsl #5
+    ldrh w20, [x9, #VR_TYPE]
+    bl cg_var_off
+    mov w21, w0
+    cmp w20, #TY_INT
+    b.eq 1f
+    mov w0, #0
+    mov w1, w21
+    bl e_addr
+    mov w0, #1
+    LDX x1, cg_line
+    bl e_mov32
+    CALL_RT RT_FN_INPUT_STR
+    b 2f
+1:  mov w0, #0
+    LDX x1, cg_line
+    bl e_mov32
+    CALL_RT RT_FN_INPUT_INT
+    mov w0, #10
+    mov w1, w21
+    bl e_addr
+    WORD 0xB9000140
+2:  LEAVE
+
 group_open:
     ENTER
     LDX x19, cg_cur
@@ -1605,6 +1686,8 @@ for_aliasable:
     cmp w14, #SK_DECL
     b.eq 2f
     cmp w14, #SK_ASSIGN
+    b.eq 2f
+    cmp w14, #SK_INPUT
     b.eq 2f
     cmp w14, #SK_FOR
     b.ne 1b
