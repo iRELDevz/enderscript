@@ -104,6 +104,9 @@ s_str_loop2:
 s_count1:
     .ascii "loop count must be int, got "
     .byte 0
+s_in_bool:
+    .ascii "cannot read input into bool variable '"
+    .byte 0
 s_lvar1:
     .ascii "loop variable '"
     .byte 0
@@ -1338,6 +1341,8 @@ FUNC sema
     b.eq .Lsema_assign
     cmp w9, #10
     b.eq .Lsema_group_stmt
+    cmp w9, #11
+    b.eq .Lsema_input_stmt
     cmp w9, #8
     b.eq .Lsema_jump_stmt
     cmp w9, #9
@@ -1350,6 +1355,46 @@ FUNC sema
     add x8, x8, :lo12:sm_carry
     str x17, [x8]
     b .Lsema_next
+
+.Lsema_input_stmt:
+    ldur w16, [x23, #4]
+    mov w10, w16
+    bl var_lookup
+    cmn w9, #1
+    b.eq .Lsema_assign
+    stur w9, [x23, #8]
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldurh w9, [x9, #12]
+    cmp w9, #3
+    b.ne .Lsema_out_parts
+    bl msg_reset
+    adrp x8, s_in_bool
+    add x8, x8, :lo12:s_in_bool
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_quote
+    add x8, x8, :lo12:s_quote
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    ldur w16, [x23, #4]
+    mov w11, w16
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
 
 .Lsema_group_stmt:
     mov x17, #0
@@ -2172,6 +2217,11 @@ FUNC sema
     subs w9, w9, w16
     stur w9, [x26, #8]
 .Lsema_out_count:
+    ldurh w16, [x23, #0]
+    cmp w16, #11
+    b.ne .Lsema_carry_keep
+    eor w26, w26, w26
+.Lsema_carry_keep:
     adrp x8, sm_carry
     add x8, x8, :lo12:sm_carry
     str x26, [x8]
@@ -2305,6 +2355,9 @@ FUNC pool_compact
     b.hs .Lpool_compact_done
     ldurh w16, [x23, #0]
     cmp w16, #3
+    b.eq .Lpool_compact_stmt_next
+    ldurh w16, [x23, #0]
+    cmp w16, #11
     b.eq .Lpool_compact_stmt_next
     ldurh w16, [x23, #0]
     cmp w16, #4

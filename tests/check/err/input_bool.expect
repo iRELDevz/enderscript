@@ -1,0 +1,1 @@
+input_bool.es:2:1: semantic error: cannot read input into bool variable 'f'

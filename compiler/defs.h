@@ -51,6 +51,7 @@
 #define TK_COMMA     44
 #define TK_BREAK     45
 #define TK_CONTINUE  46
+#define TK_INPUT     47
 #define T_KIND       0
 #define T_COL        2
 #define T_LINE       4
@@ -96,6 +97,7 @@
 #define SK_BREAK     8
 #define SK_CONTINUE  9
 #define SK_GROUP     10
+#define SK_INPUT     11
 #define BK_IF        1
 #define BK_LOOP      2
 #define BK_FOR       3
@@ -139,6 +141,7 @@
 #define MAX_NODES    2000
 #define MAX_BLOCKS   100
 #define MAX_OR       64
+#define IN_SIZE      0x400000
 #define V_DATA_HI   12
 
 #define RT_OUT_LEN    0
@@ -149,7 +152,11 @@
 #define RT_WRITTEN    40
 #define RT_GETSTD     48
 #define RT_EXIT       56
-#define RT_VARS       64
+#define RT_READFILE   64
+#define RT_STDIN      72
+#define RT_INPOS      80
+#define RT_INLEFT     88
+#define RT_VARS       128
 #define RT_BUF_SIZE   65536
 
 #define RC_SIZE     16

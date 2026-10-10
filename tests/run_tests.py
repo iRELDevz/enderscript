@@ -11,8 +11,8 @@ passed = 0
 failed = 0
 
 
-def run(cmd, cwd):
-    r = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def run(cmd, cwd, inp=None):
+    r = subprocess.run(cmd, cwd=cwd, input=inp if inp is not None else b"", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return r.returncode, r.stdout.decode(errors="replace"), r.stderr.decode(errors="replace")
 
 
@@ -70,7 +70,8 @@ if found:
         if code != 0:
             result(label, False, ["build exit %d: %s" % (code, err.strip())])
             continue
-        code, out, err = run([exe], d)
+        ip = os.path.join(d, base + ".in")
+        code, out, err = run([exe], d, open(ip, "rb").read() if os.path.exists(ip) else None)
         expect = read(os.path.join(d, base + ".out"))
         result(label, code == 0 and out == expect, ["expected: %r" % expect, "actual:   %r" % out, "exit %d" % code])
 

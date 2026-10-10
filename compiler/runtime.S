@@ -129,7 +129,12 @@ rt_str_eq:
     ret
 
 rt_div_zero:
+    adr x9, rt_s_divz
+    mov x10, #(rt_s_divz_end - rt_s_divz)
+rt_fail:
     mov w19, w0
+    mov x22, x9
+    mov x23, x10
     bl rt_flush
     sub sp, sp, #96
     add x21, sp, #96
@@ -149,8 +154,8 @@ rt_div_zero:
     strb w12, [x20, #-1]!
     mov w19, w11
     cbnz w19, 1b
-    adr x9, rt_s_divz
-    mov x10, #(rt_s_divz_end - rt_s_divz)
+    mov x9, x22
+    mov x10, x23
     sub x20, x20, x10
     mov x11, #0
 2:  ldrb w12, [x9, x11]
@@ -182,6 +187,138 @@ rt_div_zero:
     svc #0
 #endif
 
+rt_read_line:
+    stp x29, x30, [sp, #-64]!
+    stp x19, x20, [sp, #16]
+    stp x21, x22, [sp, #32]
+    str w0, [sp, #48]
+    bl rt_flush
+    ldr w9, [x28, #RT_INLEFT]
+    mov w10, #65536
+    cmp w9, w10
+    b.lo .Lrl_full
+    ldr x19, [x28, #RT_INPOS]
+    mov x20, #0
+    mov w21, #0
+1:
+#if defined(TARGET_WINDOWS)
+    ldr x0, [x28, #RT_STDIN]
+    add x1, sp, #56
+    mov w2, #1
+    add x3, sp, #52
+    str wzr, [sp, #52]
+    mov x4, #0
+    ldr x16, [x28, #RT_READFILE]
+    blr x16
+    cbz w0, .Lrl_eof
+    ldr w9, [sp, #52]
+    cbz w9, .Lrl_eof
+#else
+    mov x0, #0
+    add x1, sp, #56
+    mov x2, #1
+    mov x8, #63
+    svc #0
+    cmp x0, #1
+    b.ne .Lrl_eof
+#endif
+    mov w21, #1
+    ldrb w9, [sp, #56]
+    cmp w9, #10
+    b.eq .Lrl_done
+    mov w10, #65535
+    cmp w20, w10
+    b.hs 1b
+    strb w9, [x19, x20]
+    add x20, x20, #1
+    b 1b
+.Lrl_eof:
+    cbnz w21, .Lrl_done
+    mov x0, #0
+    mov x1, #0
+    b .Lrl_ret
+.Lrl_done:
+    cbz x20, 2f
+    sub x9, x20, #1
+    ldrb w10, [x19, x9]
+    cmp w10, #13
+    b.ne 2f
+    mov x20, x9
+2:  mov x0, x19
+    mov x1, x20
+.Lrl_ret:
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x29, x30, [sp], #64
+    ret
+.Lrl_full:
+    ldr w0, [sp, #48]
+    adr x9, rt_s_inbig
+    mov x10, #(rt_s_inbig_end - rt_s_inbig)
+    b rt_fail
+
+rt_input_str:
+    stp x29, x30, [sp, #-32]!
+    str x19, [sp, #16]
+    mov x19, x0
+    mov w0, w1
+    bl rt_read_line
+    str x0, [x19]
+    strh w1, [x19, #8]
+    cbz x0, 1f
+    ldr x9, [x28, #RT_INPOS]
+    add x9, x9, x1
+    str x9, [x28, #RT_INPOS]
+    ldr w9, [x28, #RT_INLEFT]
+    sub w9, w9, w1
+    str w9, [x28, #RT_INLEFT]
+1:  ldr x19, [sp, #16]
+    ldp x29, x30, [sp], #32
+    ret
+
+rt_input_int:
+    stp x29, x30, [sp, #-16]!
+    bl rt_read_line
+    mov w2, #0
+    cbz x0, 9f
+    add x1, x0, x1
+1:  cmp x0, x1
+    b.hs 9f
+    ldrb w9, [x0]
+    cmp w9, #' '
+    b.eq 2f
+    cmp w9, #9
+    b.ne 3f
+2:  add x0, x0, #1
+    b 1b
+3:  mov w3, #0
+    cmp w9, #'-'
+    b.ne 4f
+    mov w3, #1
+    add x0, x0, #1
+    b 5f
+4:  cmp w9, #'+'
+    b.ne 5f
+    add x0, x0, #1
+5:  cmp x0, x1
+    b.hs 6f
+    ldrb w9, [x0]
+    sub w9, w9, #'0'
+    cmp w9, #9
+    b.hi 6f
+    mov w10, #10
+    madd w2, w2, w10, w9
+    add x0, x0, #1
+    b 5b
+6:  cbz w3, 9f
+    neg w2, w2
+9:  mov w0, w2
+    ldp x29, x30, [sp], #16
+    ret
+
+rt_s_inbig:
+    .ascii "runtime error: too much input on line "
+rt_s_inbig_end:
 rt_s_divz:
     .ascii "runtime error: division by zero on line "
 rt_s_divz_end:
@@ -200,6 +337,8 @@ rt_offsets:
     .word rt_flush - rt_start
     .word rt_div_zero - rt_start
     .word rt_str_eq - rt_start
+    .word rt_input_str - rt_start
+    .word rt_input_int - rt_start
 rt_consts:
     .ascii "truefalsenull"
     .byte 0, 0, 0

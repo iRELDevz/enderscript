@@ -4,7 +4,7 @@
 
 #define FILE_ALIGN  0x200
 #define SECT_ALIGN  0x1000
-#define IDATA_SIZE  176
+#define IDATA_SIZE  208
 #define IMAGE_BASE  0x140000000
 
     .bss
@@ -23,7 +23,7 @@ pe_idata_file: .zero 8
 
     RODATA
 idata_tpl:
-    .zero 104
+    .zero 120
     .short 0
     .asciz "GetStdHandle"
     .byte 0
@@ -31,9 +31,12 @@ idata_tpl:
     .asciz "WriteFile"
     .short 0
     .asciz "ExitProcess"
+    .short 0
+    .asciz "ReadFile"
+    .byte 0
     .asciz "kernel32.dll"
     .byte 0
-    .zero 16
+    .zero 20
 
     .text
 
@@ -84,7 +87,7 @@ FUNC img_layout
     STX x9, img_T_va
     LDX x9, pe_I
     add x9, x9, x13
-    add x9, x9, #72
+    add x9, x9, #80
     STX x9, img_iat_va
 
     LDX x0, g_nstmt
@@ -190,13 +193,13 @@ FUNC img_finish
     str w10, [x22, #120]
     mov w11, #40
     str w11, [x22, #124]
-    add w11, w10, #160
+    add w11, w10, #192
     str w11, [x22, #152]
     mov w11, #12
     str w11, [x22, #156]
-    add w11, w10, #72
+    add w11, w10, #80
     str w11, [x22, #208]
-    mov w11, #32
+    mov w11, #40
     str w11, [x22, #212]
 
     add x22, x21, #0x148
@@ -269,23 +272,26 @@ FUNC img_finish
     LDX x10, pe_I
     add w11, w10, #40
     str w11, [x22]
-    add w11, w10, #146
+    add w11, w10, #174
     str w11, [x22, #12]
-    add w11, w10, #72
+    add w11, w10, #80
     str w11, [x22, #16]
-    add x11, x10, #104
-    str x11, [x22, #40]
-    str x11, [x22, #72]
     add x11, x10, #120
-    str x11, [x22, #48]
+    str x11, [x22, #40]
     str x11, [x22, #80]
-    add x11, x10, #132
-    str x11, [x22, #56]
+    add x11, x10, #136
+    str x11, [x22, #48]
     str x11, [x22, #88]
+    add x11, x10, #148
+    str x11, [x22, #56]
+    str x11, [x22, #96]
+    add x11, x10, #162
+    str x11, [x22, #64]
+    str x11, [x22, #104]
     LDX x11, pe_T
-    str w11, [x22, #160]
+    str w11, [x22, #192]
     mov w11, #12
-    str w11, [x22, #164]
+    str w11, [x22, #196]
     ENDF
 
 #endif

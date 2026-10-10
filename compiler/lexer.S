@@ -78,6 +78,8 @@ keywords:
     .ascii "break"
     .byte 8, TK_CONTINUE
     .ascii "continue"
+    .byte 5, TK_INPUT
+    .ascii "input"
     .byte 0
 
     .globl escape_chars
