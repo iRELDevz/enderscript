@@ -38,6 +38,7 @@ s_str_if2    db "' inside an if block", 0
 s_in_loop2   db "' must be declared before the loop", 0
 s_str_loop2  db "' inside a loop", 0
 s_count1     db "loop count must be int, got ", 0
+s_in_bool    db "cannot read input into bool variable '", 0
 s_lvar1      db "loop variable '", 0
 s_lvar2      db "' must be int, it is declared as ", 0
 cmp_chars    db "   <><>"
@@ -790,6 +791,8 @@ FUNC sema
     je .assign
     cmp eax, SK_GROUP
     je .group_stmt
+    cmp eax, SK_INPUT
+    je .input_stmt
     cmp eax, SK_BREAK
     je .jump_stmt
     cmp eax, SK_CONTINUE
@@ -799,6 +802,28 @@ FUNC sema
 .jump_stmt:
     mov qword [sm_carry], 0
     jmp .next
+
+.input_stmt:
+    mov ecx, [r12 + S_TOK]
+    call var_lookup
+    cmp eax, -1
+    je .assign
+    mov [r12 + S_VAR], eax
+    shl rax, 5
+    add rax, [g_vars]
+    movzx eax, word [rax + VR_TYPE]
+    cmp eax, TY_BOOL
+    jne .out_parts
+    call msg_reset
+    lea rcx, [s_in_bool]
+    call msg_addz
+    mov ecx, [r12 + S_TOK]
+    call msg_tok
+    lea rcx, [s_quote]
+    call msg_addz
+    lea rcx, [s_semantic]
+    mov edx, [r12 + S_TOK]
+    call diag_error_tok
 
 .group_stmt:
     mov qword [sm_carry], 0
@@ -1240,6 +1265,10 @@ FUNC sema
     sub eax, [r15 + P_A]
     mov [r15 + P_B], eax
 .out_count:
+    cmp word [r12 + S_KIND], SK_INPUT
+    jne .carry_keep
+    xor r15d, r15d
+.carry_keep:
     mov [sm_carry], r15
     mov rax, [g_npieces]
     sub eax, [r12 + S_PIECES]
@@ -1312,6 +1341,8 @@ FUNC pool_compact
     cmp r12, r13
     jae .done
     cmp word [r12 + S_KIND], SK_OUT
+    je .stmt_next
+    cmp word [r12 + S_KIND], SK_INPUT
     je .stmt_next
     cmp word [r12 + S_KIND], SK_IF
     je .stmt_if

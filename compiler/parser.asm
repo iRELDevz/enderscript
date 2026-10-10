@@ -336,9 +336,31 @@ FUNC parse
     je .end_line
     cmp eax, TK_EOF
     je .end_line
+    cmp eax, TK_INPUT
+    je .input_value
     call parse_value
     call push_root
     mov dword [r14 + S_NPARTS], 1
+    jmp .end_line
+
+.input_value:
+    mov ebx, [r14 + S_TOK]
+    cmp word [r14 + S_KIND], SK_DECL
+    jne .input_fill
+    add r14, S_SIZE
+.input_fill:
+    mov word [r14 + S_KIND], SK_INPUT
+    mov word [r14 + S_MODE], 1
+    mov [r14 + S_TOK], ebx
+    mov dword [r14 + S_MODETOK], NO_TOKEN
+    mov dword [r14 + S_VAR], 0
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov dword [r14 + S_NPARTS], 0
+    inc r13
+    CUR
+    cmp eax, TK_SHR
+    je .out_body
     jmp .end_line
 
 .print_stmt:

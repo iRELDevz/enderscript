@@ -48,6 +48,7 @@ default rel
 %define TK_COMMA    44
 %define TK_BREAK    45
 %define TK_CONTINUE 46
+%define TK_INPUT    47
 
 %define T_KIND      0
 %define T_COL       2
@@ -99,6 +100,7 @@ default rel
 %define SK_BREAK    8
 %define SK_CONTINUE 9
 %define SK_GROUP    10
+%define SK_INPUT    11
 
 %define BK_IF       1
 %define BK_LOOP     2
@@ -151,10 +153,15 @@ default rel
 %define MAX_OR      64
 
 %define RT_OUT_LEN    0
+%define RT_INLEFT     4
 %define RT_STDOUT     8
 %define RT_WRITEFILE  16
 %define RT_GETSTD     24
 %define RT_EXIT       32
+%define RT_READFILE   40
+%define RT_STDIN      48
+%define RT_INPOS      56
+%define IN_SIZE       0x400000
 %define RT_BUF        64
 %define RT_BUF_SIZE   65536
 %define RT_VARS       (RT_BUF + RT_BUF_SIZE)
