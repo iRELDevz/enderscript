@@ -152,11 +152,13 @@ FUNC codegen
     call mem_alloc
     mov [cg_patch], rax
     mov rcx, [g_nparts]
+    add rcx, [g_nstmt]
     add rcx, 16
     shl rcx, 3
     call mem_alloc
     mov [cg_lp], rax
     mov rcx, [g_nparts]
+    add rcx, [g_nstmt]
     add rcx, 16
     shl rcx, 2
     add rax, rcx
@@ -263,8 +265,22 @@ FUNC codegen
     je .loop
     cmp word [r12 + S_KIND], SK_ELSE
     je .else
+    cmp word [r12 + S_KIND], SK_BREAK
+    je .jump
+    cmp word [r12 + S_KIND], SK_CONTINUE
+    je .jump
+    cmp word [r12 + S_KIND], SK_GROUP
+    je .group
 
     call emit_store
+    jmp .next
+
+.jump:
+    call emit_jump
+    jmp .next
+
+.group:
+    call group_open
     jmp .next
 
 .out:
@@ -1420,6 +1436,8 @@ close_blocks:
     add rsi, rax
     cmp [rsi], rbx
     jne .done
+    cmp qword [rsi + 8], BK_GROUP
+    je .close_group
     cmp qword [rsi + 8], BK_IF
     jne .close_loop
     call else_of
@@ -1455,8 +1473,20 @@ close_blocks:
     mov [cg_npatch], r9
     dec qword [cg_bdepth]
     jmp .loop
+.close_group:
+    mov ecx, [rsi + 120]
+    call place_label
+    call take_clear
+    dec qword [cg_bdepth]
+    jmp .loop
 .close_loop:
     call emit_loop_tail
+    mov ecx, [rsi + 120]
+    test ecx, ecx
+    jz .no_exit
+    call place_label
+.no_exit:
+    call take_clear
     call emit_loop_merge
     dec qword [cg_bdepth]
     dec qword [cg_ldepth]
@@ -1466,6 +1496,101 @@ close_blocks:
 .done:
     pop rsi
     pop rbx
+    ret
+
+emit_jump:
+    push rsi
+    mov rax, [cg_bdepth]
+    shl rax, 7
+    lea rsi, [cg_bstack]
+    add rsi, rax
+.find:
+    sub rsi, 128
+    cmp word [r12 + S_MODE], 0
+    jne .group
+    cmp qword [rsi + 8], BK_FOR
+    je .found
+    cmp qword [rsi + 8], BK_LOOPS
+    je .found
+    jmp .find
+.group:
+    cmp qword [rsi + 8], BK_GROUP
+    jne .find
+    mov eax, [r12 + S_VAR]
+    cmp [rsi + 24], rax
+    jne .find
+    cmp qword [rsi + 32], 0
+    jne .found
+    call flush_prom
+.found:
+    BYTES 0xE9, 1
+    mov ecx, [rsi + 120]
+    cmp word [r12 + S_KIND], SK_CONTINUE
+    jne .emit
+    inc ecx
+.emit:
+    call jump_to_label
+    pop rsi
+    ret
+
+group_open:
+    cmp word [r12 + S_MODE], 0
+    je .r
+    cmp qword [cg_bdepth], 0
+    jne .kv_done
+    call kv_invalidate
+.kv_done:
+    mov rax, [cg_bdepth]
+    shl rax, 7
+    lea rcx, [cg_bstack]
+    add rcx, rax
+    inc qword [cg_bdepth]
+    mov edx, [r12 + S_PIECES]
+    mov [rcx], rdx
+    mov qword [rcx + 8], BK_GROUP
+    mov rdx, r12
+    sub rdx, [g_stmts]
+    shr rdx, 5
+    mov [rcx + 24], rdx
+    mov rdx, [cg_ldepth]
+    mov [rcx + 32], rdx
+    mov rax, [cg_label]
+    mov [rcx + 120], eax
+    inc qword [cg_label]
+    mov dword [rcx + 124], 0
+    test word [r12 + S_MODE], 1
+    jz .r
+    mov eax, [r12 + S_VAR]
+    shl rax, 5
+    add rax, [g_vars]
+    mov eax, [rax + VR_OFF]
+    add eax, RT_VARS
+    mov [rcx + 124], eax
+.r:
+    ret
+
+take_store:
+    mov ecx, [rsi + 124]
+    test ecx, ecx
+    jz .r
+    cmp qword [rsi + 40], 0
+    jne .dyn
+    OPD 0x87C741, 3, ecx
+    mov rdx, [rsi + 48]
+    jmp x64_imm32
+.dyn:
+    OPD 0x878941, 3, ecx
+.r:
+    ret
+
+take_clear:
+    mov ecx, [rsi + 124]
+    test ecx, ecx
+    jz .r
+    OPD 0x87C741, 3, ecx
+    xor edx, edx
+    jmp x64_imm32
+.r:
     ret
 
 jump_to_end:
@@ -2711,6 +2836,8 @@ ja_emit_rest:
     ret
 
 try_jump_ahead:
+    test word [r12 + S_MODE], 1
+    jnz .no
     cmp qword [rsi + 24], 0xFF
     je .no
     cmp qword [rsi + 40], 0
@@ -5266,6 +5393,8 @@ body_callfree:
 
 unroll_plan:
     mov qword [rsi + 80], 1
+    test word [r12 + S_MODE], 1
+    jnz .r
     cmp qword [rsi + 24], 0xFF
     je .r
     cmp qword [rsi + 40], 0
@@ -5472,6 +5601,28 @@ emit_loop_head:
     mov qword [rsi + 96], 0
     mov qword [rsi + 104], 0
     mov qword [rsi + 112], 0
+    mov qword [rsi + 120], 0
+    test word [r12 + S_MODE], 1
+    jz .no_label
+    mov rax, [cg_label]
+    mov [rsi + 120], eax
+    add qword [cg_label], 2
+.no_label:
+    mov eax, [r12 + S_MODETOK]
+    test eax, eax
+    jz .no_take
+    dec eax
+    shl rax, 5
+    add rax, [g_stmts]
+    test word [rax + S_MODE], 1
+    jz .no_take
+    mov eax, [rax + S_VAR]
+    shl rax, 5
+    add rax, [g_vars]
+    mov eax, [rax + VR_OFF]
+    add eax, RT_VARS
+    mov [rsi + 124], eax
+.no_take:
     mov qword [rsi + 8], BK_LOOPS
     cmp word [r12 + S_KIND], SK_FOR
     jne .kind_set
@@ -5507,6 +5658,7 @@ emit_loop_head:
     mov qword [rsi + 40], 1
     call emit_expr
 .count_ready:
+    call take_store
     call unroll_plan
     cmp qword [rsi + 8], BK_FOR
     je .for_head
@@ -5569,6 +5721,8 @@ emit_loop_head:
     OPD 0x878941, 3, ecx
     jmp .for_init
 .for_simd:
+    test word [r12 + S_MODE], 1
+    jnz .for_init
     cmp qword [rsi + 24], 0xFF
     je .for_init
     cmp qword [rsi + 48], 8
@@ -5614,6 +5768,8 @@ emit_loop_head:
     add edx, RT_VARS
     cmp qword [rsi + 24], 0xFF
     je .for_store_mem
+    test word [r12 + S_MODE], 1
+    jnz .for_store_reg
     push rdx
     mov ecx, [r12 + S_VAR]
     call for_aliasable
@@ -5673,6 +5829,12 @@ emit_loop_tail:
     mov dword [rax + rcx * 4], -1
 .no_alias:
     call unroll_body
+    mov ecx, [rsi + 120]
+    test ecx, ecx
+    jz .no_cont
+    inc ecx
+    call place_label
+.no_cont:
     cmp qword [rsi + 8], BK_FOR
     jne .loops_tail
     cmp qword [rsi + 24], 0xFF

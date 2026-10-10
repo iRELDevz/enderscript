@@ -54,6 +54,12 @@ s_no_float    db "decimal numbers are not supported yet, use int", 0
 s_wrap        db "values next to text must be wrapped in '{ }'", 0
 s_exp_value   db "expected value", 0
 s_exp_number  db "expected number after '-'", 0
+s_brk_out     db "'break' outside a loop", 0
+s_cont_out    db "'continue' outside a loop", 0
+s_exp_bname   db "expected a loop name after 'break.'", 0
+s_no_group    db "no staged loop named '", 0
+s_no_group2   db "' around this 'break'", 0
+w_takedata    db "takedata", 0
 
 section .bss
 alignb 4
@@ -63,6 +69,7 @@ ps_depth resq 1
 ps_lastif resq 1
 ps_gn     resq 1
 ps_gstack resq 2 * (MAX_BLOCKS + 1)
+ps_gstmt  resq MAX_BLOCKS + 1
 ps_pflag  resb MAX_BLOCKS + 1
 ps_vn     resq 1
 ps_vstack resq 2 * (MAX_ELIF + 1)
@@ -172,7 +179,115 @@ FUNC parse
     je .print_stmt
     cmp eax, TK_SHOW
     je .show_stmt
+    cmp eax, TK_BREAK
+    je .break_stmt
+    cmp eax, TK_CONTINUE
+    je .continue_stmt
     SYNERR s_exp_stmt
+
+.continue_stmt:
+    mov word [r14 + S_KIND], SK_CONTINUE
+    lea rsi, [s_cont_out]
+    jmp .jump_stmt
+.break_stmt:
+    mov word [r14 + S_KIND], SK_BREAK
+    lea rsi, [s_brk_out]
+.jump_stmt:
+    mov [r14 + S_TOK], r13d
+    mov word [r14 + S_MODE], 0
+    mov dword [r14 + S_NPARTS], 0
+    mov rax, [g_nroots]
+    mov [r14 + S_PARTS], eax
+    mov dword [r14 + S_PIECES], 0
+    inc r13
+    cmp word [r14 + S_KIND], SK_BREAK
+    jne .jump_inner
+    CUR
+    cmp eax, TK_DOT
+    je .break_group
+.jump_inner:
+    mov rcx, [ps_depth]
+.jump_find:
+    test rcx, rcx
+    jz .jump_none
+    dec rcx
+    lea rdx, [ps_stack]
+    mov rax, [rdx + rcx * 8]
+    mov rdx, rax
+    shl rdx, 5
+    add rdx, [g_stmts]
+    cmp word [rdx + S_KIND], SK_FOR
+    je .jump_found
+    cmp word [rdx + S_KIND], SK_LOOPS
+    jne .jump_find
+.jump_found:
+    mov [r14 + S_VAR], eax
+    or word [rdx + S_MODE], 1
+    jmp .end_line
+.jump_none:
+    mov rcx, rsi
+    mov edx, [r14 + S_TOK]
+    jmp syn_error
+.break_group:
+    inc r13
+    CUR
+    cmp eax, TK_IDENT
+    je .bg_name
+    SYNERR s_exp_bname
+.bg_name:
+    mov rsi, [ps_gn]
+.bg_find:
+    test rsi, rsi
+    jz .bg_none
+    dec rsi
+    mov rax, rsi
+    shl rax, 4
+    lea rcx, [ps_gstack]
+    mov rcx, [rcx + rax]
+    mov edx, r13d
+    call tok_same
+    jne .bg_find
+    mov word [r14 + S_MODE], 1
+    lea rcx, [ps_gstmt]
+    mov rax, [rcx + rsi * 8]
+    mov [r14 + S_VAR], eax
+    shl rax, 5
+    add rax, [g_stmts]
+    or word [rax + S_MODE], 2
+    shl rsi, 4
+    lea rcx, [ps_gstack]
+    mov rcx, [rcx + rsi + 8]
+.bg_flag:
+    cmp rcx, [ps_depth]
+    jae .bg_done
+    lea rdx, [ps_stack]
+    mov rax, [rdx + rcx * 8]
+    shl rax, 5
+    add rax, [g_stmts]
+    cmp word [rax + S_KIND], SK_FOR
+    je .bg_mark
+    cmp word [rax + S_KIND], SK_LOOPS
+    jne .bg_next
+.bg_mark:
+    or word [rax + S_MODE], 1
+.bg_next:
+    inc rcx
+    jmp .bg_flag
+.bg_done:
+    inc r13
+    jmp .end_line
+.bg_none:
+    mov ebx, r13d
+    call msg_reset
+    lea rcx, [s_no_group]
+    call msg_addz
+    mov ecx, ebx
+    call msg_tok
+    lea rcx, [s_no_group2]
+    call msg_addz
+    lea rcx, [s_syntax]
+    mov edx, ebx
+    call diag_error_tok
 
 .var_stmt:
     mov [r14 + S_TOK], r13d
@@ -429,6 +544,22 @@ FUNC parse
     jb .gs_room
     SYNERR s_too_many_or
 .gs_room:
+    mov word [r14 + S_KIND], SK_GROUP
+    mov word [r14 + S_MODE], 0
+    mov [r14 + S_TOK], ebx
+    mov dword [r14 + S_VAR], 0
+    mov dword [r14 + S_NPARTS], 0
+    mov rdx, [g_nroots]
+    mov [r14 + S_PARTS], edx
+    mov dword [r14 + S_PIECES], 0
+    mov dword [r14 + S_MODETOK], 0
+    mov dword [r14 + S_NPIECES], 0
+    lea rcx, [ps_gstmt]
+    mov rdx, r14
+    sub rdx, [g_stmts]
+    shr rdx, 5
+    mov [rcx + rax * 8], rdx
+    add r14, S_SIZE
     shl rax, 4
     lea rcx, [ps_gstack]
     mov [rcx + rax], rbx
@@ -502,6 +633,15 @@ FUNC parse
 .stop_close:
     inc r13
     dec qword [ps_gn]
+    mov rax, [ps_gn]
+    lea rcx, [ps_gstmt]
+    mov rax, [rcx + rax * 8]
+    shl rax, 5
+    add rax, [g_stmts]
+    mov rcx, r14
+    sub rcx, [g_stmts]
+    shr rcx, 5
+    mov [rax + S_PIECES], ecx
     CUR
     cmp eax, TK_NL
     je .stmt
@@ -547,8 +687,14 @@ FUNC parse
 .count_ok:
     mov qword [ps_lastif], -1
     mov word [r14 + S_KIND], SK_LOOPS
+    mov word [r14 + S_MODE], 0
     mov dword [r14 + S_PIECES], 0
     mov [r14 + S_TOK], r13d
+    mov rax, [ps_gn]
+    lea rcx, [ps_gstmt]
+    mov rax, [rcx + rax * 8 - 8]
+    inc eax
+    mov [r14 + S_MODETOK], eax
     mov rax, [g_nroots]
     mov [r14 + S_PARTS], eax
     mov dword [r14 + S_NPARTS], 1
@@ -717,6 +863,8 @@ FUNC parse
     lea rax, [s_exp_blk_for]
     mov [pr_bmsg], rax
     mov word [r14 + S_KIND], SK_FOR
+    mov word [r14 + S_MODE], 0
+    mov dword [r14 + S_MODETOK], 0
     mov dword [r14 + S_PIECES], 0
     inc r13
     CUR
@@ -747,6 +895,8 @@ FUNC parse
     lea rax, [s_exp_blk_lps]
     mov [pr_bmsg], rax
     mov word [r14 + S_KIND], SK_LOOPS
+    mov word [r14 + S_MODE], 0
+    mov dword [r14 + S_MODETOK], 0
     mov dword [r14 + S_PIECES], 0
     mov [r14 + S_TOK], r13d
     inc r13
@@ -1061,7 +1211,7 @@ parse_primary:
     je .leaf
     mov ecx, VK_VAR
     cmp eax, TK_IDENT
-    je .leaf
+    je .ident
     cmp eax, TK_TRUE
     je .true
     cmp eax, TK_FALSE
@@ -1085,6 +1235,51 @@ parse_primary:
     ret
 .fnum:
     SYNERR s_no_float
+.ident:
+    lea rax, [r13 + 1]
+    shl rax, 4
+    cmp word [r12 + rax], TK_DOT
+    jne .leaf
+    cmp word [r12 + rax + 16], TK_IDENT
+    jne .leaf
+    lea ecx, [r13d + 2]
+    lea rdx, [w_takedata]
+    mov r8d, 8
+    call tok_word
+    mov ecx, VK_VAR
+    jne .leaf
+    push rsi
+    mov rsi, [ps_gn]
+.take_find:
+    mov eax, -1
+    test rsi, rsi
+    jz .take_set
+    dec rsi
+    mov rax, rsi
+    shl rax, 4
+    lea rcx, [ps_gstack]
+    mov rcx, [rcx + rax]
+    mov edx, r13d
+    call tok_same
+    jne .take_find
+    lea rcx, [ps_gstmt]
+    mov rax, [rcx + rsi * 8]
+.take_set:
+    pop rsi
+    mov r9d, eax
+    mov ecx, VK_TAKE
+    mov edx, r13d
+    call new_node
+    mov [r10 + V_DATA], r9d
+    cmp r9d, -1
+    je .take_done
+    mov r8d, r9d
+    shl r8, 5
+    add r8, [g_stmts]
+    or word [r8 + S_MODE], 1
+.take_done:
+    add r13, 3
+    ret
 
 parse_string:
     mov ecx, VK_STR
