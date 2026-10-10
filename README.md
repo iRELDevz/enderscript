@@ -234,15 +234,15 @@ loops(3):
 ### Staged loops
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 100(
 print>>"halo"
 )
 200(
 print>>"hello"
 )
-stop.ins
+stop.adv
 )
 ```
 
@@ -271,20 +271,20 @@ for j in range(10):
 ### takedata
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 3(
-print>>ins.takedata
+print>>adv.takedata
 )
 2(
-print>>"b"{ins.takedata}
-break.ins
+print>>"b"{adv.takedata}
+break.adv
 )
-stop.ins
+stop.adv
 )
 ```
 
-- `name.takedata` holds the N of the `N(` block that is running in the staged loop `name`. The example above prints `3` three times, then `b2` once before `break.ins`.
+- `name.takedata` holds the N of the `N(` block that is running in the staged loop `name`. The example above prints `3` three times, then `b2` once before `break.adv`.
 - Outside a block, its value is 0.
 
 ### Input
@@ -560,15 +560,15 @@ loops(3):
 ### Loop bertahap
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 100(
 print>>"halo"
 )
 200(
 print>>"hello"
 )
-stop.ins
+stop.adv
 )
 ```
 
@@ -597,20 +597,20 @@ for j in range(10):
 ### takedata
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 3(
-print>>ins.takedata
+print>>adv.takedata
 )
 2(
-print>>"b"{ins.takedata}
-break.ins
+print>>"b"{adv.takedata}
+break.adv
 )
-stop.ins
+stop.adv
 )
 ```
 
-- `nama.takedata` berisi N dari blok `N(` yang sedang jalan di loop bertahap `nama`. Contoh di atas mencetak `3` tiga kali, lalu `b2` sekali sebelum `break.ins`.
+- `nama.takedata` berisi N dari blok `N(` yang sedang jalan di loop bertahap `nama`. Contoh di atas mencetak `3` tiga kali, lalu `b2` sekali sebelum `break.adv`.
 - Di luar blok, nilainya 0.
 
 ### Input
@@ -886,15 +886,15 @@ loops(3):
 ### 段階ループ
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 100(
 print>>"halo"
 )
 200(
 print>>"hello"
 )
-stop.ins
+stop.adv
 )
 ```
 
@@ -923,20 +923,20 @@ for j in range(10):
 ### takedata
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 3(
-print>>ins.takedata
+print>>adv.takedata
 )
 2(
-print>>"b"{ins.takedata}
-break.ins
+print>>"b"{adv.takedata}
+break.adv
 )
-stop.ins
+stop.adv
 )
 ```
 
-- `名前.takedata` は段階ループ `名前` で実行中の `N(` ブロックの N を持ちます。上の例は `3` を 3 回表示し、`break.ins` の前に `b2` を 1 回表示します。
+- `名前.takedata` は段階ループ `名前` で実行中の `N(` ブロックの N を持ちます。上の例は `3` を 3 回表示し、`break.adv` の前に `b2` を 1 回表示します。
 - ブロックの外では値は 0 です。
 
 ### 入力
@@ -1212,15 +1212,15 @@ loops(3):
 ### 分段循环
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 100(
 print>>"halo"
 )
 200(
 print>>"hello"
 )
-stop.ins
+stop.adv
 )
 ```
 
@@ -1249,20 +1249,20 @@ for j in range(10):
 ### takedata
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 3(
-print>>ins.takedata
+print>>adv.takedata
 )
 2(
-print>>"b"{ins.takedata}
-break.ins
+print>>"b"{adv.takedata}
+break.adv
 )
-stop.ins
+stop.adv
 )
 ```
 
-- `名称.takedata` 是分段循环 `名称` 中正在运行的 `N(` 代码块的 N。上面的例子先输出 `3` 三次，然后在 `break.ins` 之前输出一次 `b2`。
+- `名称.takedata` 是分段循环 `名称` 中正在运行的 `N(` 代码块的 N。上面的例子先输出 `3` 三次，然后在 `break.adv` 之前输出一次 `b2`。
 - 在代码块之外，它的值为 0。
 
 ### 输入
@@ -1538,15 +1538,15 @@ loops(3):
 ### चरणबद्ध लूप
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 100(
 print>>"halo"
 )
 200(
 print>>"hello"
 )
-stop.ins
+stop.adv
 )
 ```
 
@@ -1575,20 +1575,20 @@ for j in range(10):
 ### takedata
 
 ```
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 3(
-print>>ins.takedata
+print>>adv.takedata
 )
 2(
-print>>"b"{ins.takedata}
-break.ins
+print>>"b"{adv.takedata}
+break.adv
 )
-stop.ins
+stop.adv
 )
 ```
 
-- `नाम.takedata` में चरणबद्ध लूप `नाम` में चल रहे `N(` ब्लॉक का N होता है। ऊपर का उदाहरण `3` तीन बार छापता है, फिर `break.ins` से पहले `b2` एक बार।
+- `नाम.takedata` में चरणबद्ध लूप `नाम` में चल रहे `N(` ब्लॉक का N होता है। ऊपर का उदाहरण `3` तीन बार छापता है, फिर `break.adv` से पहले `b2` एक बार।
 - ब्लॉक के बाहर इसका मान 0 है।
 
 ### इनपुट

@@ -1,6 +1,6 @@
-loops(ins,
+loops(adv,
 
-start.ins 
+start.adv 
 
 100(
 print>>"halo"
@@ -9,6 +9,6 @@ print>>"halo"
 print>>"hello"
 )
 
-stop.ins
+stop.adv
 
 )
