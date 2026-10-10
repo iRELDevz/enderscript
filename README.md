@@ -49,7 +49,7 @@ The same syntax and results on Windows and Linux, for x64, x86, and ARM64.
 
 ### Not available yet
 
-Functions, arrays, decimal numbers, user input, `break`, and `continue`.
+Functions, arrays, decimal numbers, and user input.
 
 ## Target
 
@@ -250,12 +250,49 @@ stop.ins
 - Between `start` and `stop` only `N(` to `)` blocks are allowed. Each block runs N times, in order from the top. The example above prints `halo` 100 times and then `hello` 200 times.
 - Block bodies are delimited by parentheses, so indentation is not required.
 
+### break and continue
+
+```
+for i in range(100):
+  if i is 5:
+    break
+  print>>i
+
+for j in range(10):
+  if j % 2 is 0:
+    continue
+  print>>j
+```
+
+- `break` stops the innermost loop, and `continue` jumps straight to the next iteration. Both work in `for`, `loops`, and `N(` blocks.
+- After `break` in a `for` loop, the loop variable holds the value it had when the loop stopped.
+- In a staged loop, `break` only stops the running `N(` block. `break.name` stops the whole staged loop `name`.
+
+### takedata
+
+```
+loops(ins,
+start.ins
+3(
+print>>ins.takedata
+)
+2(
+print>>"b"{ins.takedata}
+break.ins
+)
+stop.ins
+)
+```
+
+- `name.takedata` holds the N of the `N(` block that is running in the staged loop `name`. The example above prints `3` three times, then `b2` once before `break.ins`.
+- Outside a block, its value is 0.
+
 ### General rules
 
 - One statement per line. Empty lines are ignored.
 - Comments start with `//` and run to the end of the line.
 - The program runs from the first line to the last, without a `main` function.
-- Keywords: `print show int str bool true false null if elif else is isnot and or for in range loops`.
+- Keywords: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`.
 
 ### Error messages
 
@@ -324,7 +361,7 @@ Sintaks dan hasil yang sama di Windows dan Linux, untuk x64, x86, dan ARM64.
 
 ### Yang belum ada
 
-Fungsi, array, bilangan desimal, input pengguna, `break`, dan `continue` belum tersedia.
+Fungsi, array, bilangan desimal, dan input pengguna belum tersedia.
 
 ## Target
 
@@ -525,12 +562,49 @@ stop.ins
 - Di antara `start` dan `stop` hanya boleh ada blok `N(` sampai `)`. Setiap blok dijalankan N kali, berurutan dari atas. Contoh di atas mencetak `halo` 100 kali lalu `hello` 200 kali.
 - Isi blok dibatasi kurung, jadi tidak wajib menjorok.
 
+### break dan continue
+
+```
+for i in range(100):
+  if i is 5:
+    break
+  print>>i
+
+for j in range(10):
+  if j % 2 is 0:
+    continue
+  print>>j
+```
+
+- `break` menghentikan loop terdalam, sedangkan `continue` langsung lompat ke putaran berikutnya. Keduanya berlaku untuk `for`, `loops`, dan blok `N(`.
+- Setelah `break` di `for`, variabel loop berisi nilai saat loop dihentikan.
+- Di loop bertahap, `break` hanya menghentikan blok `N(` yang sedang jalan. `break.nama` menghentikan seluruh loop bertahap `nama`.
+
+### takedata
+
+```
+loops(ins,
+start.ins
+3(
+print>>ins.takedata
+)
+2(
+print>>"b"{ins.takedata}
+break.ins
+)
+stop.ins
+)
+```
+
+- `nama.takedata` berisi N dari blok `N(` yang sedang jalan di loop bertahap `nama`. Contoh di atas mencetak `3` tiga kali, lalu `b2` sekali sebelum `break.ins`.
+- Di luar blok, nilainya 0.
+
 ### Aturan umum
 
 - Satu statement per baris. Baris kosong diabaikan.
 - Komentar diawali `//` sampai akhir baris.
 - Program berjalan dari baris pertama sampai terakhir, tanpa fungsi `main`.
-- Keyword: `print show int str bool true false null if elif else is isnot and or for in range loops`.
+- Keyword: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`.
 
 ### Pesan error
 
@@ -599,7 +673,7 @@ Windows と Linux の x64、x86、ARM64 で、同じ構文と同じ結果にな�
 
 ### まだないもの
 
-関数、配列、小数、ユーザー入力、`break`、`continue`。
+関数、配列、小数、ユーザー入力。
 
 ## ターゲット
 
@@ -800,12 +874,49 @@ stop.ins
 - `start` と `stop` の間には `N(` から `)` までのブロックのみ書けます。各ブロックは上から順に N 回実行されます。上の例は `halo` を 100 回、次に `hello` を 200 回表示します。
 - ブロックの中身は括弧で区切られるため、インデントは必須ではありません。
 
+### break と continue
+
+```
+for i in range(100):
+  if i is 5:
+    break
+  print>>i
+
+for j in range(10):
+  if j % 2 is 0:
+    continue
+  print>>j
+```
+
+- `break` は最も内側のループを終了し、`continue` はすぐに次の繰り返しへ進みます。どちらも `for`、`loops`、`N(` ブロックで使えます。
+- `for` で `break` した後、ループ変数は終了した時点の値を保持します。
+- 段階ループでは、`break` は実行中の `N(` ブロックだけを終了します。`break.名前` は段階ループ `名前` 全体を終了します。
+
+### takedata
+
+```
+loops(ins,
+start.ins
+3(
+print>>ins.takedata
+)
+2(
+print>>"b"{ins.takedata}
+break.ins
+)
+stop.ins
+)
+```
+
+- `名前.takedata` は段階ループ `名前` で実行中の `N(` ブロックの N を持ちます。上の例は `3` を 3 回表示し、`break.ins` の前に `b2` を 1 回表示します。
+- ブロックの外では値は 0 です。
+
 ### 一般的なルール
 
 - 1 行に 1 文です。空行は無視されます。
 - コメントは `//` から行末までです。
 - プログラムは `main` 関数なしで、最初の行から最後の行まで実行されます。
-- キーワード: `print show int str bool true false null if elif else is isnot and or for in range loops`。
+- キーワード: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`。
 
 ### エラーメッセージ
 
@@ -874,7 +985,7 @@ Windows x64 上的基准测试结果:
 
 ### 尚未支持
 
-函数、数组、小数、用户输入、`break` 和 `continue`。
+函数、数组、小数和用户输入。
 
 ## 目标平台
 
@@ -1075,12 +1186,49 @@ stop.ins
 - `start` 和 `stop` 之间只能有 `N(` 到 `)` 的代码块。每个代码块从上到下依次运行 N 次。上面的例子先输出 `halo` 100 次，再输出 `hello` 200 次。
 - 代码块内容由括号界定，因此不要求缩进。
 
+### break 和 continue
+
+```
+for i in range(100):
+  if i is 5:
+    break
+  print>>i
+
+for j in range(10):
+  if j % 2 is 0:
+    continue
+  print>>j
+```
+
+- `break` 结束最内层的循环，`continue` 直接跳到下一次迭代。两者都可用于 `for`、`loops` 和 `N(` 代码块。
+- 在 `for` 中 `break` 之后，循环变量保留循环结束时的值。
+- 在分段循环中，`break` 只结束正在运行的 `N(` 代码块。`break.名称` 结束整个分段循环 `名称`。
+
+### takedata
+
+```
+loops(ins,
+start.ins
+3(
+print>>ins.takedata
+)
+2(
+print>>"b"{ins.takedata}
+break.ins
+)
+stop.ins
+)
+```
+
+- `名称.takedata` 是分段循环 `名称` 中正在运行的 `N(` 代码块的 N。上面的例子先输出 `3` 三次，然后在 `break.ins` 之前输出一次 `b2`。
+- 在代码块之外，它的值为 0。
+
 ### 通用规则
 
 - 每行一条语句。空行会被忽略。
 - 注释以 `//` 开头，直到行尾。
 - 程序从第一行运行到最后一行，不需要 `main` 函数。
-- 关键字: `print show int str bool true false null if elif else is isnot and or for in range loops`。
+- 关键字: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`。
 
 ### 错误信息
 
@@ -1149,7 +1297,7 @@ Windows और Linux पर x64, x86 और ARM64 के लिए एक जै
 
 ### अभी उपलब्ध नहीं
 
-फ़ंक्शन, ऐरे, दशमलव संख्याएँ, उपयोगकर्ता इनपुट, `break` और `continue`।
+फ़ंक्शन, ऐरे, दशमलव संख्याएँ और उपयोगकर्ता इनपुट।
 
 ## लक्ष्य
 
@@ -1350,12 +1498,49 @@ stop.ins
 - `start` और `stop` के बीच केवल `N(` से `)` तक के ब्लॉक हो सकते हैं। हर ब्लॉक ऊपर से क्रम में N बार चलता है। ऊपर का उदाहरण `halo` 100 बार और फिर `hello` 200 बार छापता है।
 - ब्लॉक की सामग्री कोष्ठकों से सीमित होती है, इसलिए इंडेंट ज़रूरी नहीं है।
 
+### break और continue
+
+```
+for i in range(100):
+  if i is 5:
+    break
+  print>>i
+
+for j in range(10):
+  if j % 2 is 0:
+    continue
+  print>>j
+```
+
+- `break` सबसे भीतरी लूप को रोकता है, और `continue` सीधे अगले चक्र पर जाता है। दोनों `for`, `loops` और `N(` ब्लॉक में काम करते हैं।
+- `for` में `break` के बाद लूप वेरिएबल में वही मान रहता है जो लूप रुकते समय था।
+- चरणबद्ध लूप में `break` केवल चल रहे `N(` ब्लॉक को रोकता है। `break.नाम` पूरे चरणबद्ध लूप `नाम` को रोकता है।
+
+### takedata
+
+```
+loops(ins,
+start.ins
+3(
+print>>ins.takedata
+)
+2(
+print>>"b"{ins.takedata}
+break.ins
+)
+stop.ins
+)
+```
+
+- `नाम.takedata` में चरणबद्ध लूप `नाम` में चल रहे `N(` ब्लॉक का N होता है। ऊपर का उदाहरण `3` तीन बार छापता है, फिर `break.ins` से पहले `b2` एक बार।
+- ब्लॉक के बाहर इसका मान 0 है।
+
 ### सामान्य नियम
 
 - हर लाइन में एक स्टेटमेंट। खाली लाइनें अनदेखी की जाती हैं।
 - टिप्पणी `//` से शुरू होकर लाइन के अंत तक चलती है।
 - प्रोग्राम पहली लाइन से आख़िरी लाइन तक चलता है, `main` फ़ंक्शन के बिना।
-- कीवर्ड: `print show int str bool true false null if elif else is isnot and or for in range loops`।
+- कीवर्ड: `print show int str bool true false null if elif else is isnot and or for in range loops break continue`।
 
 ### त्रुटि संदेश
 

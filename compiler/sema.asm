@@ -646,6 +646,8 @@ XFUNC check_value
     je .var
     cmp eax, VK_EXPR
     je .expr
+    cmp eax, VK_TAKE
+    je .take
     mov dword [vr12], TY_BOOL
     cmp eax, VK_BOOL
     je .done
@@ -820,6 +822,25 @@ XFUNC check_value
     mov ecx, ebx
     call check_expr
     mov dword [vr12], eax
+    jmp .done
+
+.take:
+    mov dword [vr12], TY_INT
+    mov eax, [ebx + V_DATA]
+    cmp eax, -1
+    je .take_zero
+    shl eax, 5
+    add eax, [g_stmts]
+    mov eax, [eax + S_VAR]
+    mov byte [ebx + V_KIND], VK_VAR
+    mov [ebx + V_DATA], eax
+    jmp .done
+.take_zero:
+    push ebx
+    mov ebx, dword [vr10]
+    xor dword [vr10], ebx
+    pop ebx
+    call set_const
 
 .done:
     push ecx
@@ -992,7 +1013,47 @@ XFUNC sema
     je .decl
     cmp eax, SK_ASSIGN
     je .assign
+    cmp eax, SK_GROUP
+    je .group_stmt
+    cmp eax, SK_BREAK
+    je .jump_stmt
+    cmp eax, SK_CONTINUE
+    je .jump_stmt
     jmp .out
+
+.jump_stmt:
+    mov dword [sm_carry], 0
+    jmp .next
+
+.group_stmt:
+    mov dword [sm_carry], 0
+    push ebx
+    mov ebx, [vr12]
+    test word [ebx + S_MODE], 1
+    pop ebx
+    jz .next
+    mov eax, [g_nvars]
+    inc dword [g_nvars]
+    push ebx
+    mov ebx, [vr12]
+    mov [ebx + S_VAR], eax
+    pop ebx
+    shl eax, 5
+    add eax, [g_vars]
+    mov dword [eax + VR_HASH], 0
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    mov [eax + VR_TOK], ecx
+    mov word [eax + VR_TYPE], TY_INT
+    mov ecx, [g_vars_size]
+    add ecx, 3
+    and ecx, -4
+    mov [eax + VR_OFF], ecx
+    add ecx, 4
+    mov [g_vars_size], ecx
+    jmp .next
 
 .decl:
     mov dword [sm_carry], 0
