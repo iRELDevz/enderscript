@@ -498,6 +498,8 @@ FUNC check_value
     je .var
     cmp eax, VK_EXPR
     je .expr
+    cmp eax, VK_TAKE
+    je .take
     mov r12d, TY_BOOL
     cmp eax, VK_BOOL
     je .done
@@ -619,6 +621,22 @@ FUNC check_value
     mov rcx, rbx
     call check_expr
     mov r12d, eax
+    jmp .done
+
+.take:
+    mov r12d, TY_INT
+    mov eax, [rbx + V_DATA]
+    cmp eax, -1
+    je .take_zero
+    shl rax, 5
+    add rax, [g_stmts]
+    mov eax, [rax + S_VAR]
+    mov byte [rbx + V_KIND], VK_VAR
+    mov [rbx + V_DATA], rax
+    jmp .done
+.take_zero:
+    xor r10d, r10d
+    call set_const
 
 .done:
     mov [rbx + V_TYPE], r12b
@@ -770,7 +788,38 @@ FUNC sema
     je .decl
     cmp eax, SK_ASSIGN
     je .assign
+    cmp eax, SK_GROUP
+    je .group_stmt
+    cmp eax, SK_BREAK
+    je .jump_stmt
+    cmp eax, SK_CONTINUE
+    je .jump_stmt
     jmp .out
+
+.jump_stmt:
+    mov qword [sm_carry], 0
+    jmp .next
+
+.group_stmt:
+    mov qword [sm_carry], 0
+    test word [r12 + S_MODE], 1
+    jz .next
+    mov rax, [g_nvars]
+    inc qword [g_nvars]
+    mov [r12 + S_VAR], eax
+    shl rax, 5
+    add rax, [g_vars]
+    mov qword [rax + VR_HASH], 0
+    mov ecx, [r12 + S_TOK]
+    mov [rax + VR_TOK], ecx
+    mov word [rax + VR_TYPE], TY_INT
+    mov rcx, [g_vars_size]
+    add rcx, 3
+    and rcx, -4
+    mov [rax + VR_OFF], ecx
+    add rcx, 4
+    mov [g_vars_size], rcx
+    jmp .next
 
 .decl:
     mov qword [sm_carry], 0
