@@ -1,23 +1,23 @@
-loops(ins,
-start.ins
+loops(adv,
+start.adv
 3(
-print>>ins.takedata
+print>>adv.takedata
 )
 2(
-print>>"b"{ins.takedata}
+print>>"b"{adv.takedata}
 break
 )
 4(
-print>>"c"{ins.takedata}
-break.ins
+print>>"c"{adv.takedata}
+break.adv
 )
 5(
 print>>"never"
 )
-stop.ins
+stop.adv
 )
-print>>"after "{ins.takedata}
-a.int = ins.takedata
+print>>"after "{adv.takedata}
+a.int = adv.takedata
 print>>a
 k.int = 0
 loops(g,
