@@ -129,7 +129,15 @@ rt_flush:
     ret
 
 rt_div_zero:
+    call .here
+.here:
+    pop eax
+    add eax, rt_s_divz - .here
+    mov ecx, rt_s_divz_len
+rt_fail:
     mov esi, edx
+    push eax
+    push ecx
     call rt_flush
     sub esp, 80
     lea edi, [esp + 80]
@@ -145,15 +153,13 @@ rt_div_zero:
     mov [ecx], dl
     test eax, eax
     jnz .digit
-    sub ecx, rt_s_divz_len
+    mov ebp, [esp + 80]
+    sub ecx, ebp
     push edi
     push ecx
     mov edi, ecx
-    call .here
-.here:
-    pop esi
-    add esi, rt_s_divz - .here
-    mov ecx, rt_s_divz_len
+    mov esi, [esp + 92]
+    mov ecx, ebp
     rep movsb
     pop ecx
     pop edx
@@ -197,6 +203,134 @@ rt_str_eq:
     pop esi
     ret 4
 
+rt_read_line:
+    push esi
+    push edi
+    push ebp
+    sub esp, 16
+    mov [esp + 12], edx
+    call rt_flush
+    cmp dword [ebx + RT_INLEFT], 65536
+    jb .full
+    mov edi, [ebx + RT_INPOS]
+    xor esi, esi
+    xor ebp, ebp
+.next:
+    push ebx
+    mov eax, 3
+    xor ebx, ebx
+    lea ecx, [esp + 4]
+    mov edx, 1
+    int 0x80
+    pop ebx
+    cmp eax, 1
+    jne .eof
+    mov ebp, 1
+    mov al, [esp]
+    cmp al, 10
+    je .done
+    cmp esi, 65535
+    jae .next
+    mov [edi + esi], al
+    inc esi
+    jmp .next
+.eof:
+    test ebp, ebp
+    jnz .done
+    xor eax, eax
+    xor ecx, ecx
+    jmp .ret
+.done:
+    test esi, esi
+    jz .out
+    cmp byte [edi + esi - 1], 13
+    jne .out
+    dec esi
+.out:
+    mov eax, edi
+    mov ecx, esi
+.ret:
+    add esp, 16
+    pop ebp
+    pop edi
+    pop esi
+    ret
+.full:
+    mov edx, [esp + 12]
+    call .here
+.here:
+    pop eax
+    add eax, rt_s_inbig - .here
+    mov ecx, rt_s_inbig_len
+    jmp rt_fail
+
+rt_input_str:
+    push esi
+    mov esi, ecx
+    call rt_read_line
+    mov [esi], eax
+    mov [esi + 8], cx
+    test eax, eax
+    jz .r
+    add [ebx + RT_INPOS], ecx
+    sub [ebx + RT_INLEFT], ecx
+.r:
+    pop esi
+    ret
+
+rt_input_int:
+    push esi
+    push edi
+    call rt_read_line
+    xor edx, edx
+    test eax, eax
+    jz .r
+    mov esi, eax
+    lea edi, [eax + ecx]
+.sp:
+    cmp esi, edi
+    jae .r
+    cmp byte [esi], ' '
+    je .sp_next
+    cmp byte [esi], 9
+    jne .sign
+.sp_next:
+    inc esi
+    jmp .sp
+.sign:
+    xor ecx, ecx
+    cmp byte [esi], '-'
+    jne .plus
+    mov ecx, 1
+    inc esi
+    jmp .dig
+.plus:
+    cmp byte [esi], '+'
+    jne .dig
+    inc esi
+.dig:
+    cmp esi, edi
+    jae .end
+    movzx eax, byte [esi]
+    sub eax, '0'
+    cmp eax, 9
+    ja .end
+    imul edx, edx, 10
+    add edx, eax
+    inc esi
+    jmp .dig
+.end:
+    test ecx, ecx
+    jz .r
+    neg edx
+.r:
+    mov eax, edx
+    pop edi
+    pop esi
+    ret
+
+rt_s_inbig db "runtime error: too much input on line "
+rt_s_inbig_len equ $ - rt_s_inbig
 rt_s_divz db "runtime error: division by zero on line "
 rt_s_divz_len equ $ - rt_s_divz
 
@@ -212,6 +346,8 @@ rt_offsets:
     dd rt_flush - rt_start
     dd rt_div_zero - rt_start
     dd rt_str_eq - rt_start
+    dd rt_input_str - rt_start
+    dd rt_input_int - rt_start
 
 rt_consts:
     db "truefalsenull", 0, 0, 0
