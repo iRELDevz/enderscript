@@ -149,6 +149,11 @@ rt_fail:
     mov ecx, 1
     call [r15 + RT_EXIT]
 
+rt_index:
+    lea rax, [rt_s_index]
+    mov r8d, rt_s_index_len
+    jmp rt_fail
+
 rt_str_eq:
     test rcx, rcx
     jz .a_null
@@ -307,6 +312,8 @@ rt_s_inbig db "runtime error: too much input on line "
 rt_s_inbig_len equ $ - rt_s_inbig
 rt_s_divz db "runtime error: division by zero on line "
 rt_s_divz_len equ $ - rt_s_divz
+rt_s_index db "runtime error: array index out of range on line "
+rt_s_index_len equ $ - rt_s_index
 rt_s_true  db "true"
 rt_s_false db "false"
 rt_s_null  db "null"
@@ -325,3 +332,4 @@ rt_offsets:
     dd rt_str_eq - rt_start
     dd rt_input_str - rt_start
     dd rt_input_int - rt_start
+    dd rt_index - rt_start
