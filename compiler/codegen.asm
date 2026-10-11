@@ -3809,7 +3809,7 @@ range_setup:
     mov eax, [rax + V_DATA]
     test eax, eax
     jle .verify
-    lea r8d, [eax - 1]
+    mov r8d, eax
 .top_hi:
     mov rdx, [cg_vhi]
     mov [rdx + rcx * 4], r8d
@@ -4965,7 +4965,7 @@ simd_emit:
 .init_iv:
     cmp ebx, [sv_V]
     jae .init_res
-    lea r8d, [ebx * 4]
+    lea r8d, [ebx * 4 + 1]
     lea r9d, [r8d + 1]
     lea r10d, [r8d + 2]
     lea r11d, [r8d + 3]
@@ -4987,19 +4987,19 @@ simd_emit:
 .init_lane:
     cmp r14d, [sv_V]
     jae .init_step
-    lea eax, [r14d * 4]
-    xor edx, edx
-    div r13d
-    mov r8d, edx
     lea eax, [r14d * 4 + 1]
     xor edx, edx
     div r13d
-    mov r9d, edx
+    mov r8d, edx
     lea eax, [r14d * 4 + 2]
     xor edx, edx
     div r13d
-    mov r10d, edx
+    mov r9d, edx
     lea eax, [r14d * 4 + 3]
+    xor edx, edx
+    div r13d
+    mov r10d, edx
+    lea eax, [r14d * 4 + 4]
     xor edx, edx
     div r13d
     mov r11d, edx
@@ -5303,16 +5303,16 @@ simd_emit:
 .v16_lane:
     cmp r14d, [sv_V]
     jae .v16_step
-    lea eax, [r14d * 8]
+    lea eax, [r14d * 8 + 1]
     call .pair
     mov r8d, eax
-    lea eax, [r14d * 8 + 2]
+    lea eax, [r14d * 8 + 3]
     call .pair
     mov r9d, eax
-    lea eax, [r14d * 8 + 4]
+    lea eax, [r14d * 8 + 5]
     call .pair
     mov r10d, eax
-    lea eax, [r14d * 8 + 6]
+    lea eax, [r14d * 8 + 7]
     call .pair
     mov r11d, eax
     call vec_slot
@@ -5546,9 +5546,10 @@ simd_emit:
     mov ecx, [rax + VR_OFF]
     add ecx, RT_VARS
     OPD 0x87C741, 3, ecx
-    lea edx, [r14d - 1]
+    mov edx, r14d
     call x64_imm32
-    mov [rsi + 72], r14
+    lea rax, [r14 + 1]
+    mov [rsi + 72], rax
     pop r15
     pop r14
     pop r13
@@ -6036,8 +6037,8 @@ emit_loop_head:
     mov rcx, [rsi + 24]
     cmp qword [rsi + 72], 0
     jne .for_init_start
-    mov r9d, 0x31
-    call emit_rr
+    mov edx, 1
+    call emit_mov_reg_imm
     jmp .for_jump
 .for_init_start:
     mov rdx, [rsi + 72]
@@ -6046,7 +6047,7 @@ emit_loop_head:
 .for_init_mem:
     mov ecx, [rsi + 32]
     OPD 0x87C741, 3, ecx
-    xor edx, edx
+    mov edx, 1
     call x64_imm32
 .for_jump:
     cmp qword [rsi + 40], 0
@@ -6086,7 +6087,6 @@ emit_loop_head:
     cmp qword [rsi + 40], 0
     jne .alias_hi
     mov r8, [rsi + 48]
-    dec r8d
 .alias_hi:
     mov rax, [cg_vhi]
     mov [rax + rcx * 4], r8d
@@ -6188,7 +6188,7 @@ emit_loop_tail:
     mov ecx, [rsi + 48]
     OPD 0x873B41, 3, ecx
 .jl_back:
-    BYTES 0x8C0F, 2
+    BYTES 0x8E0F, 2
     mov rcx, [rsi + 16]
     call emit_rel32_back
     mov ecx, [rsi + 88]
@@ -6196,7 +6196,6 @@ emit_loop_tail:
     jz .r
     OPD 0x87C741, 3, ecx
     mov rdx, [rsi + 48]
-    dec edx
     jmp x64_imm32
 .r:
     ret
@@ -6344,6 +6343,11 @@ idx_proven:
     push rsi
     mov esi, edx
     call node_addr
+    cmp byte [rax + V_KIND], VK_VAR
+    jne .not_var
+    xor ebx, ebx
+    jmp .check
+.not_var:
     cmp byte [rax + V_KIND], VK_EXPR
     jne .no
     cmp byte [rax + V_NEG], OP_ADD
@@ -6369,17 +6373,31 @@ idx_proven:
     jne .no
     mov ebx, [rax + V_DATA]
 .check:
-    cmp ebx, 1
-    jl .no
     mov [ix_c], ebx
     mov [ix_node], ecx
+    push rcx
+    call node_addr
+    xor edx, edx
+    cmp byte [rax + V_KIND], VK_VAR
+    jne .low
+    mov r8d, [rax + V_DATA]
+    mov r9, [cg_vreg]
+    test byte [r9 + r8], 0x40
+    jz .low
+    mov edx, 1
+.low:
+    pop rcx
+    add edx, ebx
+    cmp edx, 1
+    jl .no
     call node_range
     test eax, eax
     js .no
     mov eax, eax
+    movsxd rbx, ebx
     add rax, rbx
     cmp rax, rsi
-    ja .no
+    jg .no
     mov eax, 1
     jmp .r
 .no:
