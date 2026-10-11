@@ -9,6 +9,7 @@
 #define RT_FN_STR_EQ     24
 #define RT_FN_INPUT_STR  28
 #define RT_FN_INPUT_INT  32
+#define RT_FN_INDEX      36
 
 #define OP_STR_W   0xB9000000
 #define OP_LDR_W   0xB9400000
@@ -68,6 +69,7 @@ cg_bland:   .zero 8
 cg_blacc:   .zero 8
 mg_m:       .zero 8
 mg_k:       .zero 8
+ix_c:       .zero 8
 cg_bstack:  .zero B_SIZE * (MAX_NEST + 1)
 
     .text
@@ -275,7 +277,17 @@ FUNC codegen
     b.eq .Lcg_group
     cmp w9, #SK_INPUT
     b.eq .Lcg_input
+    cmp w9, #SK_ADECL
+    b.eq .Lcg_adecl
+    cmp w9, #SK_ASET
+    b.eq .Lcg_aset
     bl emit_store
+    b .Lcg_next
+.Lcg_adecl:
+    bl emit_adecl
+    b .Lcg_next
+.Lcg_aset:
+    bl emit_aset
     b .Lcg_next
 .Lcg_input:
     bl emit_out_body
@@ -404,6 +416,8 @@ emit_store:
     ldrb w9, [x23, #V_KIND]
     cmp w9, #VK_EXPR
     b.eq .Les_expr
+    cmp w9, #VK_ELEM
+    b.eq .Les_elem
     cmp w9, #VK_VAR
     b.eq .Les_copy
     cmp w9, #VK_NULL
@@ -429,6 +443,16 @@ emit_store:
     mov w1, w21
     bl e_addr
     LDST OP_STR_W, 0, 10, 0
+    b .Les_done
+.Les_elem:
+    mov w0, w24
+    mov w1, w22
+    bl load_value
+    mov w0, #10
+    mov w1, w21
+    bl e_addr
+    mov w0, w22
+    bl store_at_x10
     b .Les_done
 .Les_str:
     mov w0, #9
@@ -535,6 +559,8 @@ emit_out_body:
     CALL_RT RT_FN_WRITE
     b .Lob_piece
 .Lob_var:
+    cmp w9, #PK_ELEM
+    b.eq .Lob_elem
     cmp w9, #PK_EXPR
     b.ne .Lob_plain
     ldr w0, [x23, #P_A]
@@ -564,6 +590,27 @@ emit_out_body:
     bl e_addr
     CALL_RT RT_FN_WRITE_STR
     b .Lob_piece
+.Lob_elem:
+    ldr w0, [x23, #P_A]
+    bl cg_node_addr
+    ldr w9, [x0, #V_DATA]
+    ldr w1, [x0, #V_DATA_HI]
+    mov w0, w9
+    bl elem_addr
+    ldr w9, [x23, #P_B]
+    cmp w9, #TY_INT
+    b.ne 1f
+    WORD 0xB9400140
+    CALL_RT RT_FN_WRITE_INT
+    b .Lob_piece
+1:  cmp w9, #TY_BOOL
+    b.ne 2f
+    WORD 0x39400140
+    CALL_RT RT_FN_WRITE_BOOL
+    b .Lob_piece
+2:  WORD 0xAA0A03E0
+    CALL_RT RT_FN_WRITE_STR
+    b .Lob_piece
 .Lob_done:
     LEAVE
 
@@ -576,14 +623,16 @@ emit_expr:
     b.eq .Lee_const
     cmp w9, #VK_VAR
     b.eq .Lee_var
+    cmp w9, #VK_ELEM
+    b.eq .Lee_elem
     ldrb w20, [x19, #V_NEG]
     cmp w20, #OP_NEG
     b.eq .Lee_neg
     ldr w0, [x19, #V_DATA_HI]
     bl cg_node_addr
     ldrb w9, [x0, #V_KIND]
-    cmp w9, #VK_EXPR
-    b.ne .Lee_right_simple
+    cmp w9, #VK_VAR
+    b.ls .Lee_right_simple
     cmp w20, #OP_ADD
     b.eq 1f
     cmp w20, #OP_MUL
@@ -591,8 +640,8 @@ emit_expr:
 1:  ldr w0, [x19, #V_DATA]
     bl cg_node_addr
     ldrb w9, [x0, #V_KIND]
-    cmp w9, #VK_EXPR
-    b.ne .Lee_left_simple
+    cmp w9, #VK_VAR
+    b.ls .Lee_left_simple
 .Lee_general:
     ldr w0, [x19, #V_DATA]
     bl emit_expr
@@ -679,6 +728,12 @@ emit_expr:
     bl emit_var_addr
     MOV32 w0, 0xB9400140
     bl e_word
+    b .Lee_done
+.Lee_elem:
+    ldr w0, [x19, #V_DATA]
+    ldr w1, [x19, #V_DATA_HI]
+    bl elem_addr
+    WORD 0xB9400140
 .Lee_done:
     LEAVE
 
@@ -1298,9 +1353,18 @@ emit_compare:
     ldrb w9, [x0, #V_KIND]
     cmp w9, #VK_VAR
     b.eq 5f
+    cmp w9, #VK_ELEM
+    b.eq .Lcm_bool_le
     ldr w1, [x0, #V_DATA]
     mov w0, #0
     bl e_mov32
+    b 6f
+.Lcm_bool_le:
+    ldr w9, [x0, #V_DATA]
+    ldr w1, [x0, #V_DATA_HI]
+    mov w0, w9
+    bl elem_addr
+    WORD 0x39400140
     b 6f
 5:  ldr w0, [x0, #V_DATA]
     bl emit_var_addr
@@ -1310,9 +1374,27 @@ emit_compare:
     ldrb w9, [x0, #V_KIND]
     cmp w9, #VK_VAR
     b.eq 7f
+    cmp w9, #VK_ELEM
+    b.eq .Lcm_bool_re
     ldr w1, [x0, #V_DATA]
     mov w0, #1
     bl e_mov32
+    b 8f
+.Lcm_bool_re:
+    ldr w23, [x0, #V_DATA]
+    ldr w24, [x0, #V_DATA_HI]
+    mov w0, w23
+    mov w1, w24
+    bl elem_clobbers
+    mov w22, w0
+    cbz w22, 9f
+    WORD 0xB81F0FE0
+9:  mov w0, w23
+    mov w1, w24
+    bl elem_addr
+    WORD 0x39400141
+    cbz w22, 8f
+    WORD 0xB84107E0
     b 8f
 7:  ldr w0, [x0, #V_DATA]
     bl emit_var_addr
@@ -1348,6 +1430,8 @@ emit_str_args:
     b.eq 1f
     cmp w9, #VK_STR
     b.eq 2f
+    cmp w9, #VK_ELEM
+    b.eq .Lsa_elem
     MOV32 w0, 0xD2800000
     orr w0, w0, w20
     bl e_word
@@ -1374,6 +1458,28 @@ emit_str_args:
     add w0, w20, #1
     ldr w1, [x19, #V_DATA_HI]
     bl e_mov32
+    b 3f
+.Lsa_elem:
+    mov w21, #0
+    cbz w20, 4f
+    ldr w0, [x19, #V_DATA]
+    ldr w1, [x19, #V_DATA_HI]
+    bl elem_clobbers
+    mov w21, w0
+    cbz w21, 4f
+    WORD 0xA9BF07E0
+4:  ldr w0, [x19, #V_DATA]
+    ldr w1, [x19, #V_DATA_HI]
+    bl elem_addr
+    MOV32 w0, 0xF9400140
+    orr w0, w0, w20
+    bl e_word
+    MOV32 w0, 0x79401140
+    add w9, w20, #1
+    orr w0, w0, w9
+    bl e_word
+    cbz w21, 3f
+    WORD 0xA8C107E0
 3:  LEAVE
 
 try_divisible:
@@ -1588,6 +1694,9 @@ emit_input:
     LDX x10, g_vars
     add x9, x10, x0, lsl #5
     ldrh w20, [x9, #VR_TYPE]
+    ldr w9, [x19, #S_MODETOK]
+    cmn w9, #1
+    b.ne .Lin_elem
     bl cg_var_off
     mov w21, w0
     cmp w20, #TY_INT
@@ -1608,6 +1717,35 @@ emit_input:
     mov w1, w21
     bl e_addr
     WORD 0xB9000140
+    b 2f
+.Lin_elem:
+    cmp w20, #TY_INT
+    b.eq 3f
+    ldr w0, [x19, #S_VAR]
+    ldr w1, [x19, #S_MODETOK]
+    bl elem_addr
+    WORD 0xAA0A03E0
+    mov w0, #1
+    LDX x1, cg_line
+    bl e_mov32
+    CALL_RT RT_FN_INPUT_STR
+    b 2f
+3:  mov w0, #0
+    LDX x1, cg_line
+    bl e_mov32
+    CALL_RT RT_FN_INPUT_INT
+    ldr w0, [x19, #S_VAR]
+    ldr w1, [x19, #S_MODETOK]
+    bl elem_clobbers
+    mov w22, w0
+    cbz w22, 4f
+    WORD 0xB81F0FE0
+4:  ldr w0, [x19, #S_VAR]
+    ldr w1, [x19, #S_MODETOK]
+    bl elem_addr
+    cbz w22, 5f
+    WORD 0xB84107E0
+5:  WORD 0xB9000140
 2:  LEAVE
 
 group_open:
@@ -2010,6 +2148,8 @@ expr_safe:
     b.eq .Lxs_yes
     cmp w9, #VK_VAR
     b.eq .Lxs_var
+    cmp w9, #VK_ELEM
+    b.eq .Lxs_elem
     cmp w9, #VK_EXPR
     b.ne .Lxs_no
     ldrb w9, [x19, #V_NEG]
@@ -2045,6 +2185,22 @@ expr_safe:
     STX x9, cg_bldata
 .Lxs_yes:
     mov w0, #1
+    b .Lxs_ret
+.Lxs_elem:
+    ldr w9, [x19, #V_DATA]
+    LDX x10, g_vars
+    add x9, x10, x9, lsl #5
+    ldrh w10, [x9, #VR_TYPE]
+    cmp w10, #TY_INT
+    b.ne .Lxs_no
+    ldr w1, [x9, #VR_ALEN]
+    ldr w0, [x19, #V_DATA_HI]
+    bl idx_proven
+    tbnz w0, #31, .Lxs_no
+    mov x9, #1
+    STX x9, cg_bldata
+    ldr w0, [x19, #V_DATA_HI]
+    bl expr_safe
     b .Lxs_ret
 .Lxs_no:
     mov w0, #0
@@ -2318,3 +2474,410 @@ try_branchless:
     mov w0, #0
 .Ltb_ret:
     LEAVE
+
+cg_elem_size:
+    mov w9, w0
+    mov w0, #4
+    cmp w9, #TY_INT
+    b.eq 1f
+    mov w0, #1
+    cmp w9, #TY_BOOL
+    b.eq 1f
+    mov w0, #16
+1:  ret
+
+idx_proven:
+    ENTER
+    mov w19, w1
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_EXPR
+    b.ne .Lip_no
+    ldrb w9, [x0, #V_NEG]
+    cmp w9, #OP_ADD
+    b.ne .Lip_no
+    ldr w20, [x0, #V_DATA]
+    ldr w21, [x0, #V_DATA_HI]
+    mov w0, w20
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_INT
+    b.ne 1f
+    ldr w22, [x0, #V_DATA]
+    mov w23, w21
+    b 2f
+1:  mov w0, w21
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_INT
+    b.ne .Lip_no
+    ldr w22, [x0, #V_DATA]
+    mov w23, w20
+2:  cmp w22, #1
+    b.lt .Lip_no
+    mov w0, w23
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_VAR
+    b.ne .Lip_no
+    ldr w24, [x0, #V_DATA]
+    LDX x9, cg_vreg
+    ldrb w9, [x9, w24, uxtw]
+    tbz w9, #6, .Lip_no
+    LDX x9, cg_bdepth
+    mov x10, #B_SIZE
+    LA x11, cg_bstack
+3:  cbz x9, .Lip_no
+    sub x9, x9, #1
+    madd x12, x9, x10, x11
+    ldr w13, [x12, #B_KIND]
+    cmp w13, #BK_FOR
+    b.ne 3b
+    ldr w13, [x12, #B_ALIAS]
+    cmp w13, w24
+    b.ne 3b
+    ldr w13, [x12, #B_DYN]
+    cbnz w13, .Lip_no
+    ldr w13, [x12, #B_LIMIT]
+    sub w13, w13, #1
+    add w13, w13, w22
+    cmp w13, w19
+    b.gt .Lip_no
+    STX x22, ix_c
+    mov w0, w24
+    bl cg_var_reg
+    b .Lip_ret
+.Lip_no:
+    mov w0, #-1
+.Lip_ret:
+    LEAVE
+
+elem_clobbers:
+    ENTER
+    mov w19, w0
+    mov w20, w1
+    mov w0, w20
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_INT
+    b.eq 1f
+    LDX x9, g_vars
+    add x9, x9, x19, lsl #5
+    ldr w1, [x9, #VR_ALEN]
+    mov w0, w20
+    bl idx_proven
+    tbz w0, #31, 1f
+    mov w0, #1
+    b 2f
+1:  mov w0, #0
+2:  LEAVE
+
+elem_addr:
+    ENTER
+    mov w19, w0
+    mov w20, w1
+    LDX x9, g_vars
+    add x21, x9, x19, lsl #5
+    ldrh w0, [x21, #VR_TYPE]
+    bl cg_elem_size
+    mov w22, w0
+    ldr w23, [x21, #VR_OFF]
+    add w23, w23, #RT_VARS
+    mov w0, w20
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_INT
+    b.ne 1f
+    ldr w9, [x0, #V_DATA]
+    sub w9, w9, #1
+    madd w1, w9, w22, w23
+    mov w0, #10
+    bl e_addr
+    b .Lea_done
+1:  mov w0, w20
+    ldr w1, [x21, #VR_ALEN]
+    bl idx_proven
+    tbz w0, #31, .Lea_proven
+    mov w0, w20
+    bl emit_expr
+    WORD 0x51000409
+    mov w0, #11
+    ldr w1, [x21, #VR_ALEN]
+    bl e_mov32
+    WORD 0x6B0B013F
+    WORD 0x54000083
+    LDX x9, cg_line
+    and w10, w9, #0xFFFF
+    MOV32 w0, 0x52800000
+    orr w0, w0, w10, lsl #5
+    bl e_word
+    LDX x9, cg_line
+    lsr w10, w9, #16
+    MOV32 w0, 0x72A00000
+    orr w0, w0, w10, lsl #5
+    bl e_word
+    CALL_RT RT_FN_INDEX
+    mov w0, #10
+    mov w1, w23
+    bl e_addr
+    mov w24, #9
+    b .Lea_add
+.Lea_proven:
+    mov w24, w0
+    LDX x9, ix_c
+    sub w9, w9, #1
+    madd w1, w9, w22, w23
+    mov w0, #10
+    bl e_addr
+.Lea_add:
+    rbit w9, w22
+    clz w9, w9
+    MOV32 w0, 0x8B20414A
+    orr w0, w0, w24, lsl #16
+    orr w0, w0, w9, lsl #10
+    bl e_word
+.Lea_done:
+    LEAVE
+
+load_value:
+    ENTER
+    mov w19, w0
+    mov w20, w1
+    bl cg_node_addr
+    mov x21, x0
+    ldrb w22, [x21, #V_KIND]
+    cmp w20, #TY_INT
+    b.ne 1f
+    mov w0, w19
+    bl emit_expr
+    b .Llv_done
+1:  cmp w22, #VK_ELEM
+    b.ne 2f
+    ldr w0, [x21, #V_DATA]
+    ldr w1, [x21, #V_DATA_HI]
+    bl elem_addr
+    b 3f
+2:  cmp w22, #VK_VAR
+    b.ne 4f
+    ldr w0, [x21, #V_DATA]
+    bl emit_var_addr
+3:  cmp w20, #TY_BOOL
+    b.ne 5f
+    WORD 0x39400140
+    b .Llv_done
+5:  WORD 0xF9400140
+    WORD 0x79401141
+    b .Llv_done
+4:  cmp w20, #TY_BOOL
+    b.ne 6f
+    mov w0, #0
+    ldr w1, [x21, #V_DATA]
+    bl e_mov32
+    b .Llv_done
+6:  cmp w22, #VK_STR
+    b.ne 7f
+    mov w0, #0
+    LDX x1, cg_pool_va
+    ldr w9, [x21, #V_DATA]
+    add x1, x1, x9
+    bl e_adr_va
+    mov w0, #1
+    ldr w1, [x21, #V_DATA_HI]
+    bl e_mov32
+    b .Llv_done
+7:  WORD 0xD2800000
+    WORD 0xD2800001
+.Llv_done:
+    LEAVE
+
+store_at_x10:
+    stp x29, x30, [sp, #-16]!
+    cmp w0, #TY_INT
+    b.ne 1f
+    WORD 0xB9000140
+    b 3f
+1:  cmp w0, #TY_BOOL
+    b.ne 2f
+    WORD 0x39000140
+    b 3f
+2:  WORD 0xF9000140
+    WORD 0x79001141
+3:  ldp x29, x30, [sp], #16
+    ret
+
+is_default:
+    stp x29, x30, [sp, #-16]!
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_NULL
+    b.eq 2f
+    cmp w9, #VK_INT
+    b.eq 1f
+    cmp w9, #VK_BOOL
+    b.ne 3f
+1:  ldr w9, [x0, #V_DATA]
+    cbz w9, 2f
+3:  mov w0, #0
+    b 4f
+2:  mov w0, #1
+4:  ldp x29, x30, [sp], #16
+    ret
+
+emit_aset:
+    ENTER
+    LDX x19, cg_cur
+    ldr w9, [x19, #S_PARTS]
+    LDX x10, g_roots
+    add x10, x10, x9, lsl #2
+    ldr w20, [x10]
+    ldr w21, [x10, #4]
+    ldrh w22, [x19, #S_MODE]
+    ldr w0, [x19, #S_VAR]
+    mov w1, w20
+    bl elem_addr
+    ldr w9, [x19, #S_NPARTS]
+    cmp w9, #2
+    b.lo .Las2_zero
+    mov w0, w21
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    mov w23, #0
+    cmp w9, #VK_INT
+    b.eq 1f
+    cmp w9, #VK_BOOL
+    b.eq 1f
+    cmp w9, #VK_STR
+    b.eq 1f
+    cmp w9, #VK_NULL
+    b.eq 1f
+    mov w23, #1
+    WORD 0xF81F0FEA
+1:  mov w0, w21
+    mov w1, w22
+    bl load_value
+    cbz w23, 2f
+    WORD 0xF84107EA
+2:  mov w0, w22
+    bl store_at_x10
+    b .Las2_done
+.Las2_zero:
+    cmp w22, #TY_INT
+    b.ne 3f
+    WORD 0xB900015F
+    b .Las2_done
+3:  cmp w22, #TY_BOOL
+    b.ne 4f
+    WORD 0x3900015F
+    b .Las2_done
+4:  WORD 0xF900015F
+    WORD 0x7900115F
+.Las2_done:
+    LEAVE
+
+emit_adecl:
+    ENTER
+    LDX x19, cg_cur
+    ldr w9, [x19, #S_VAR]
+    LDX x10, g_vars
+    add x24, x10, x9, lsl #5
+    ldrh w20, [x24, #VR_TYPE]
+    mov w0, w20
+    bl cg_elem_size
+    mov w21, w0
+    ldr w0, [x19, #S_VAR]
+    bl cg_var_off
+    mov w22, w0
+    ldr w9, [x19, #S_PIECES]
+    cbnz w9, .Lad_fill
+    ldr w9, [x19, #S_NPIECES]
+    cbz w9, .Lad_values
+    WORD 0xD2800000
+    WORD 0xD2800001
+    bl .Lad_loop
+    b .Lad_values
+.Lad_fill:
+    ldr w9, [x19, #S_PARTS]
+    LDX x10, g_roots
+    ldr w23, [x10, x9, lsl #2]
+    ldr w9, [x19, #S_NPIECES]
+    cbnz w9, 1f
+    mov w0, w23
+    bl is_default
+    cbnz w0, .Lad_done
+1:  mov w0, w23
+    mov w1, w20
+    bl load_value
+    bl .Lad_loop
+    b .Lad_done
+.Lad_values:
+    mov w23, #0
+2:  ldr w9, [x19, #S_NPARTS]
+    cmp w23, w9
+    b.hs .Lad_done
+    ldr w9, [x19, #S_PARTS]
+    add w9, w9, w23
+    LDX x10, g_roots
+    ldr w0, [x10, x9, lsl #2]
+    str x0, [sp, #-16]!
+    ldr w9, [x19, #S_NPIECES]
+    cbnz w9, 3f
+    bl is_default
+    cbnz w0, 6f
+3:  ldr x0, [sp]
+    bl cg_node_addr
+    ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_INT
+    b.eq 4f
+    cmp w9, #VK_BOOL
+    b.eq 4f
+    ldr x0, [sp]
+    mov w1, w20
+    bl load_value
+    madd w1, w23, w21, w22
+    mov w0, #10
+    bl e_addr
+    mov w0, w20
+    bl store_at_x10
+    b 6f
+4:  ldr w1, [x0, #V_DATA]
+    mov w0, #9
+    bl e_mov32
+    madd w1, w23, w21, w22
+    mov w0, #10
+    bl e_addr
+    cmp w20, #TY_BOOL
+    b.eq 5f
+    WORD 0xB9000149
+    b 6f
+5:  WORD 0x39000149
+6:  add sp, sp, #16
+    add w23, w23, #1
+    b 2b
+.Lad_done:
+    LEAVE
+.Lad_loop:
+    stp x29, x30, [sp, #-16]!
+    mov w0, #10
+    mov w1, w22
+    bl e_addr
+    mov w0, #9
+    ldr w1, [x24, #VR_ALEN]
+    bl e_mov32
+    cmp w20, #TY_INT
+    b.ne 1f
+    WORD 0xB8004540
+    b 3f
+1:  cmp w20, #TY_BOOL
+    b.ne 2f
+    WORD 0x38001540
+    b 3f
+2:  WORD 0x79001141
+    WORD 0xF8010540
+3:  WORD 0x71000529
+    cmp w20, #TY_STR
+    b.eq 4f
+    WORD 0x54FFFFC1
+    b 5f
+4:  WORD 0x54FFFFA1
+5:  ldp x29, x30, [sp], #16
+    ret

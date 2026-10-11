@@ -1,0 +1,1 @@
+arr_in_loop.es:2:3: semantic error: cannot declare array 'a' inside a loop

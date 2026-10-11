@@ -176,6 +176,33 @@ s_no_group2:
 w_takedata:
     .ascii "takedata"
     .byte 0
+w_len:
+    .ascii "len"
+    .byte 0
+w_all:
+    .ascii "all"
+    .byte 0
+s_exp_rbrack:
+    .ascii "expected ']'"
+    .byte 0
+s_need_size:
+    .ascii "expected the array size, like '[5]'"
+    .byte 0
+s_size_num:
+    .ascii "array size must be a whole number"
+    .byte 0
+s_exp_eq_elem:
+    .ascii "expected '=' after ']'"
+    .byte 0
+s_all_one:
+    .ascii "'.all' needs exactly one value"
+    .byte 0
+s_all_scalar:
+    .ascii "'.all' can only be used when declaring an array"
+    .byte 0
+s_arr_input:
+    .ascii "a whole array cannot be read with input, read one element like 'a[1] = input'"
+    .byte 0
 
     .bss
     .p2align 2
@@ -626,6 +653,8 @@ FUNC parse
     b.eq .Lparse_decl
     cmp w9, #6
     b.eq .Lparse_assign
+    cmp w9, #48
+    b.eq .Lparse_elem_stmt
     adrp x8, s_exp_after_n
     add x8, x8, :lo12:s_exp_after_n
     add x10, x8, #0
@@ -681,6 +710,8 @@ FUNC parse
     mov x8, x23
     add x8, x8, x9, lsl #0
     ldrh w9, [x8]
+    cmp w9, #48
+    b.eq .Lparse_array_decl
     cmp w9, #6
     b.eq .Lparse_decl_eq
     adrp x8, s_exp_eq_type
@@ -726,7 +757,34 @@ FUNC parse
     bl push_root
     mov w17, #1
     stur w17, [x25, #12]
-    b .Lparse_end_line
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #5
+    b.ne .Lparse_end_line
+    add x10, x24, #1
+    mov w10, w10
+    adrp x8, w_all
+    add x8, x8, :lo12:w_all
+    add x11, x8, #0
+    mov w12, #3
+    bl tok_word
+    b.ne .Lparse_end_line
+    adrp x8, s_all_scalar
+    add x8, x8, :lo12:s_all_scalar
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
 
 .Lparse_input_value:
     ldur w16, [x25, #4]
@@ -736,13 +794,14 @@ FUNC parse
     b.ne .Lparse_input_fill
     adds x25, x25, #32
 .Lparse_input_fill:
+    ldr w17, =4294967295
+    stur w17, [x25, #20]
+.Lparse_input_elem:
     mov w17, #11
     sturh w17, [x25, #0]
     mov w17, #1
     sturh w17, [x25, #2]
     stur w19, [x25, #4]
-    ldr w17, =4294967295
-    stur w17, [x25, #20]
     mov w17, #0
     stur w17, [x25, #8]
     adrp x8, g_nroots
@@ -762,6 +821,297 @@ FUNC parse
     cmp w9, #8
     b.eq .Lparse_out_body
     b .Lparse_end_line
+
+.Lparse_array_decl:
+    mov w17, #12
+    sturh w17, [x25, #0]
+    mov w17, #0
+    stur w17, [x25, #28]
+    mov w17, #0
+    stur w17, [x25, #24]
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #3
+    b.eq .Lparse_ad_size
+    cmp w9, #49
+    b.ne .Lparse_ad_bad_size
+    adrp x8, s_need_size
+    add x8, x8, :lo12:s_need_size
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_bad_size:
+    adrp x8, s_size_num
+    add x8, x8, :lo12:s_size_num
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_size:
+    stur w24, [x25, #20]
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #49
+    b.eq .Lparse_ad_rbrack
+    adrp x8, s_exp_rbrack
+    add x8, x8, :lo12:s_exp_rbrack
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_rbrack:
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #6
+    b.eq .Lparse_ad_eq
+    adrp x8, s_exp_eq_type
+    add x8, x8, :lo12:s_exp_eq_type
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_eq:
+    adds x24, x24, #1
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x16, [x8]
+    mov x9, x16
+    stur w9, [x25, #16]
+    mov w17, #0
+    stur w17, [x25, #12]
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #1
+    b.eq .Lparse_end_line
+    cmp w9, #0
+    b.eq .Lparse_end_line
+    cmp w9, #47
+    b.ne .Lparse_ad_value
+    adrp x8, s_arr_input
+    add x8, x8, :lo12:s_arr_input
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_value:
+    bl parse_value
+    bl push_root
+    ldur w17, [x25, #12]
+    adds w17, w17, #1
+    stur w17, [x25, #12]
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #5
+    b.ne .Lparse_ad_comma
+    add x10, x24, #1
+    mov w10, w10
+    adrp x8, w_all
+    add x8, x8, :lo12:w_all
+    add x11, x8, #0
+    mov w12, #3
+    bl tok_word
+    b.ne .Lparse_end_line
+    ldur w16, [x25, #12]
+    cmp w16, #1
+    b.eq .Lparse_ad_all
+    adrp x8, s_all_one
+    add x8, x8, :lo12:s_all_one
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_all:
+    mov w17, #1
+    stur w17, [x25, #28]
+    adds x24, x24, #2
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #44
+    b.ne .Lparse_end_line
+    adrp x8, s_all_one
+    add x8, x8, :lo12:s_all_one
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_ad_comma:
+    cmp w9, #44
+    b.ne .Lparse_end_line
+    adds x24, x24, #1
+    b .Lparse_ad_value
+
+.Lparse_elem_stmt:
+    mov w17, #13
+    sturh w17, [x25, #0]
+    mov w17, #0
+    sturh w17, [x25, #2]
+    mov w17, #0
+    stur w17, [x25, #28]
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x16, [x8]
+    mov x9, x16
+    stur w9, [x25, #16]
+    mov w17, #1
+    stur w17, [x25, #12]
+    adds x24, x24, #1
+    bl parse_value
+    bl push_root
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #49
+    b.eq .Lparse_es_rbrack
+    adrp x8, s_exp_rbrack
+    add x8, x8, :lo12:s_exp_rbrack
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_es_rbrack:
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #6
+    b.eq .Lparse_es_eq
+    adrp x8, s_exp_eq_elem
+    add x8, x8, :lo12:s_exp_eq_elem
+    add x10, x8, #0
+    mov w11, w24
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b syn_error
+.Lparse_es_eq:
+    adds x24, x24, #1
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #1
+    b.eq .Lparse_end_line
+    cmp w9, #0
+    b.eq .Lparse_end_line
+    cmp w9, #47
+    b.eq .Lparse_es_input
+    bl parse_value
+    bl push_root
+    mov w17, #2
+    stur w17, [x25, #12]
+    b .Lparse_end_line
+.Lparse_es_input:
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x17, [x8]
+    subs x17, x17, #1
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    str x17, [x8]
+    adrp x8, g_nroots
+    add x8, x8, :lo12:g_nroots
+    ldr x16, [x8]
+    mov x9, x16
+    adrp x8, g_roots
+    add x8, x8, :lo12:g_roots
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x11
+    add x8, x8, x9, lsl #2
+    ldr w16, [x8]
+    mov w9, w16
+    stur w9, [x25, #20]
+    ldur w16, [x25, #4]
+    mov w19, w16
+    b .Lparse_input_elem
 
 .Lparse_print_stmt:
     mov w17, #3
@@ -2811,6 +3161,11 @@ parse_primary:
     mov x8, x23
     add x8, x8, x9, lsl #0
     ldrh w16, [x8]
+    cmp w16, #48
+    b.eq .Lparse_primary_elem
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w16, [x8]
     cmp w16, #5
     b.ne .Lparse_primary_leaf
     mov x8, x23
@@ -2827,7 +3182,7 @@ parse_primary:
     mov w12, #8
     bl tok_word
     mov w10, #5
-    b.ne .Lparse_primary_leaf
+    b.ne .Lparse_primary_try_len
     str x20, [sp, #-16]!
     adrp x8, ps_gn
     add x8, x8, :lo12:ps_gn
@@ -2880,6 +3235,57 @@ parse_primary:
     sturh w17, [x12, #2]
 .Lparse_primary_take_done:
     adds x24, x24, #3
+    ldp x29, x30, [sp], #16
+    ret
+.Lparse_primary_try_len:
+    add x10, x24, #2
+    mov w10, w10
+    adrp x8, w_len
+    add x8, x8, :lo12:w_len
+    add x11, x8, #0
+    mov w12, #3
+    bl tok_word
+    mov w10, #5
+    b.ne .Lparse_primary_leaf
+    mov w10, #12
+    mov w11, w24
+    bl new_node
+    adds x24, x24, #3
+    ldp x29, x30, [sp], #16
+    ret
+.Lparse_primary_elem:
+    mov w10, #11
+    mov w11, w24
+    bl new_node
+    str x9, [sp, #-16]!
+    adds x24, x24, #2
+    bl parse_expr
+    ldr x10, [sp], #16
+    mov x14, x10
+    lsl x17, x14, #4
+    mov x14, x17
+    adrp x8, g_parts
+    add x8, x8, :lo12:g_parts
+    ldr x16, [x8]
+    adds x14, x14, x16
+    stur w9, [x14, #12]
+    mov x9, x24
+    lsl x17, x9, #4
+    mov x9, x17
+    mov x8, x23
+    add x8, x8, x9, lsl #0
+    ldrh w9, [x8]
+    cmp w9, #49
+    b.eq .Lparse_primary_elem_close
+    adrp x8, s_exp_rbrack
+    add x8, x8, :lo12:s_exp_rbrack
+    add x10, x8, #0
+    mov w11, w24
+    ldp x29, x30, [sp], #16
+    b syn_error
+.Lparse_primary_elem_close:
+    adds x24, x24, #1
+    mov w9, w10
     ldp x29, x30, [sp], #16
     ret
 

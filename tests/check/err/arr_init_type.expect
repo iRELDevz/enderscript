@@ -1,0 +1,1 @@
+arr_init_type.es:1:15: type error: cannot assign str to int array 'a'

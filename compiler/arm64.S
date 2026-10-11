@@ -27,7 +27,24 @@ LEAF e_mov32
 1:  ret
 
 LEAF e_addr
-    and w9, w1, #0xFFF
+    lsr w9, w1, #24
+    cbz w9, 2f
+    and w9, w1, #0xFFFF
+    MOV32 w10, 0x52800000
+    orr w10, w10, w9, lsl #5
+    orr w10, w10, w0
+    str w10, [x27], #4
+    lsr w9, w1, #16
+    MOV32 w10, 0x72A00000
+    orr w10, w10, w9, lsl #5
+    orr w10, w10, w0
+    str w10, [x27], #4
+    MOV32 w10, 0x8B000380
+    orr w10, w10, w0, lsl #16
+    orr w10, w10, w0
+    str w10, [x27], #4
+    ret
+2:  and w9, w1, #0xFFF
     MOV32 w10, 0x91000000
     orr w10, w10, w9, lsl #10
     mov w11, #28
