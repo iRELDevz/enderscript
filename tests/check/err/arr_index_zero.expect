@@ -1,0 +1,1 @@
+arr_index_zero.es:2:10: semantic error: index 0 is outside 1..3 of array 'a'

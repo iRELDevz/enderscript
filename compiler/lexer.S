@@ -284,6 +284,14 @@ FUNC lex
     and w16, w9, #0xff
     cmp w16, #58
     b.eq .Llex_single
+    mov w10, #48
+    and w16, w9, #0xff
+    cmp w16, #91
+    b.eq .Llex_single
+    mov w10, #49
+    and w16, w9, #0xff
+    cmp w16, #93
+    b.eq .Llex_single
     and w16, w9, #0xff
     cmp w16, #33
     b.eq .Llex_bang

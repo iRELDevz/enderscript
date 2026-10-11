@@ -45,6 +45,9 @@ s_to:
 s_variable_q:
     .ascii " variable '"
     .byte 0
+s_array_q:
+    .ascii " array '"
+    .byte 0
 s_int_lit:
     .ascii "int literal "
     .byte 0
@@ -139,12 +142,68 @@ s_crlf:
 #else
     .byte 10
 #endif
+s_an_int_arr:
+    .ascii "an int array"
+    .byte 0
+s_a_str_arr:
+    .ascii "a str array"
+    .byte 0
+s_a_bool_arr:
+    .ascii "a bool array"
+    .byte 0
+s_not_arr:
+    .ascii "' is not an array"
+    .byte 0
+s_arr_q:
+    .ascii "array '"
+    .byte 0
+s_need_idx:
+    .ascii "' needs an index, like "
+    .byte 0
+s_idx_one:
+    .ascii "[1]"
+    .byte 0
+s_idx_type:
+    .ascii "array index must be int, got "
+    .byte 0
+s_idx1:
+    .ascii "index "
+    .byte 0
+s_idx2:
+    .ascii " is outside 1.."
+    .byte 0
+s_idx3:
+    .ascii " of array '"
+    .byte 0
+s_has:
+    .ascii "' has "
+    .byte 0
+s_elems_got:
+    .ascii " elements, got "
+    .byte 0
+s_values:
+    .ascii " values"
+    .byte 0
+s_arr_size:
+    .ascii "array size must be between 1 and 1048576"
+    .byte 0
+s_decl_with:
+    .ascii "' is already declared with "
+    .byte 0
+s_elements:
+    .ascii " elements"
+    .byte 0
+s_arr_blk1:
+    .ascii "cannot declare array '"
+    .byte 0
 
     .bss
     .p2align 3
 last_slot:
     .zero (1) * 8
 last_hash:
+    .zero (1) * 8
+ca_arr:
     .zero (1) * 8
 sm_carry:
     .zero (1) * 8
@@ -782,6 +841,8 @@ FUNC var_insert
     stur w23, [x19, #8]
     and w17, w24, #0xffff
     sturh w17, [x19, #12]
+    mov w17, #0
+    stur w17, [x19, #24]
     mov w10, #4
     mov w11, #4
     cmp w24, #1
@@ -835,6 +896,10 @@ FUNC check_value
     b.eq .Lcheck_value_expr
     cmp w9, #10
     b.eq .Lcheck_value_take
+    cmp w9, #11
+    b.eq .Lcheck_value_elem
+    cmp w9, #12
+    b.eq .Lcheck_value_len
     mov w23, #3
     cmp w9, #3
     b.eq .Lcheck_value_done
@@ -982,7 +1047,87 @@ FUNC check_value
     add x8, x8, :lo12:g_vars
     ldr x16, [x8]
     adds x9, x9, x16
+    ldur w16, [x9, #24]
+    cmp w16, #0
+    b.eq .Lcheck_value_var_scalar
+    ldur w16, [x19, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_need_index
+.Lcheck_value_var_scalar:
     ldurh w23, [x9, #12]
+    b .Lcheck_value_done
+.Lcheck_value_elem:
+    ldur w16, [x19, #4]
+    mov w10, w16
+    bl var_lookup
+    cmn w9, #1
+    b.eq .Lcheck_value_undefined
+    mov w24, w9
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldur w16, [x9, #24]
+    cmp w16, #0
+    b.ne .Lcheck_value_elem_arr
+    ldur w16, [x19, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_not_array
+.Lcheck_value_elem_arr:
+    ldurh w23, [x9, #12]
+    ldur w16, [x19, #12]
+    mov w10, w16
+    bl node_ptr
+    mov x10, x9
+    mov w11, w24
+    bl check_index
+    stur w24, [x19, #8]
+    b .Lcheck_value_done
+.Lcheck_value_len:
+    ldur w16, [x19, #4]
+    mov w10, w16
+    bl var_lookup
+    cmn w9, #1
+    b.eq .Lcheck_value_undefined
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldur w16, [x9, #24]
+    mov w14, w16
+    tst w14, w14
+    b.ne .Lcheck_value_len_ok
+    ldur w16, [x19, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_not_array
+.Lcheck_value_len_ok:
+    mov w23, #1
+    bl set_const
     b .Lcheck_value_done
 .Lcheck_value_undefined:
     bl msg_reset
@@ -1153,6 +1298,15 @@ FUNC check_assign
     adrp x8, s_variable_q
     add x8, x8, :lo12:s_variable_q
     add x10, x8, #0
+    adrp x8, ca_arr
+    add x8, x8, :lo12:ca_arr
+    ldr x16, [x8]
+    cmp x16, #0
+    b.eq .Lcheck_assign_var_word
+    adrp x8, s_array_q
+    add x8, x8, :lo12:s_array_q
+    add x10, x8, #0
+.Lcheck_assign_var_word:
     mov x0, x10
     bl msg_addz
     mov w10, w24
@@ -1343,6 +1497,10 @@ FUNC sema
     b.eq .Lsema_group_stmt
     cmp w9, #11
     b.eq .Lsema_input_stmt
+    cmp w9, #12
+    b.eq .Lsema_adecl
+    cmp w9, #13
+    b.eq .Lsema_aset
     cmp w9, #8
     b.eq .Lsema_jump_stmt
     cmp w9, #9
@@ -1363,13 +1521,54 @@ FUNC sema
     cmn w9, #1
     b.eq .Lsema_assign
     stur w9, [x23, #8]
+    mov w25, w9
     lsl x17, x9, #5
     mov x9, x17
     adrp x8, g_vars
     add x8, x8, :lo12:g_vars
     ldr x16, [x8]
     adds x9, x9, x16
-    ldurh w9, [x9, #12]
+    mov x19, x9
+    ldur w16, [x23, #20]
+    ldr w17, =4294967295
+    cmp w16, w17
+    b.ne .Lsema_input_elem
+    ldur w16, [x19, #24]
+    cmp w16, #0
+    b.eq .Lsema_input_type
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_need_index
+.Lsema_input_elem:
+    ldur w16, [x19, #24]
+    cmp w16, #0
+    b.ne .Lsema_input_elem_arr
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_not_array
+.Lsema_input_elem_arr:
+    ldur w16, [x23, #20]
+    mov w10, w16
+    bl node_ptr
+    mov x10, x9
+    mov w11, w25
+    bl check_index
+.Lsema_input_type:
+    ldurh w9, [x19, #12]
     cmp w9, #3
     b.ne .Lsema_out_parts
     bl msg_reset
@@ -1469,6 +1668,9 @@ FUNC sema
     adds x9, x9, x16
     mov x19, x9
     ldurh w9, [x19, #12]
+    ldur w16, [x19, #24]
+    cmp w16, #0
+    b.ne .Lsema_redecl_arr_type
     ldurh w10, [x23, #2]
     cmp w9, w10
     b.ne .Lsema_redecl_type
@@ -1604,7 +1806,10 @@ FUNC sema
     add x8, x8, :lo12:g_vars
     ldr x16, [x8]
     adds x9, x9, x16
+    ldur w16, [x9, #24]
+    cmp w16, #0
     ldurh w9, [x9, #12]
+    b.ne .Lsema_redecl_arr_type
     ldurh w10, [x23, #2]
     cmp w9, w10
     b.ne .Lsema_decl_top
@@ -1671,6 +1876,419 @@ FUNC sema
     mov x0, x10
     mov x1, x11
     bl diag_error_tok
+
+.Lsema_adecl:
+    mov x17, #0
+    adrp x8, sm_carry
+    add x8, x8, :lo12:sm_carry
+    str x17, [x8]
+    adrp x8, sm_bdepth
+    add x8, x8, :lo12:sm_bdepth
+    ldr x16, [x8]
+    cmp x16, #0
+    b.eq .Lsema_ad_top
+    bl msg_reset
+    adrp x8, s_arr_blk1
+    add x8, x8, :lo12:s_arr_blk1
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_str_if2
+    add x8, x8, :lo12:s_str_if2
+    add x10, x8, #0
+    bl block_is_loop
+    b.ne .Lsema_ad_blk_msg
+    adrp x8, s_str_loop2
+    add x8, x8, :lo12:s_str_loop2
+    add x10, x8, #0
+.Lsema_ad_blk_msg:
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    ldur w16, [x23, #4]
+    mov w11, w16
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+.Lsema_ad_top:
+    ldur w16, [x23, #20]
+    mov w10, w16
+    bl tok_text
+    eor w26, w26, w26
+    eor w10, w10, w10
+.Lsema_ad_digit:
+    cmp w10, w11
+    b.hs .Lsema_ad_digits_done
+    mov x8, x9
+    add x8, x8, x10, lsl #0
+    ldrb w12, [x8]
+    subs w12, w12, #48
+    adds w10, w10, #1
+    ldr x17, =1048576
+    cmp x26, x17
+    b.hi .Lsema_ad_digit
+    mov x17, #10
+    mul x17, x26, x17
+    mov x26, x17
+    adds x26, x26, x12
+    b .Lsema_ad_digit
+.Lsema_ad_digits_done:
+    tst x26, x26
+    b.eq .Lsema_ad_bad_size
+    ldr x17, =1048576
+    cmp x26, x17
+    b.ls .Lsema_ad_size_ok
+.Lsema_ad_bad_size:
+    bl msg_reset
+    adrp x8, s_arr_size
+    add x8, x8, :lo12:s_arr_size
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    ldur w16, [x23, #20]
+    mov w11, w16
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+.Lsema_ad_size_ok:
+    ldur w16, [x23, #4]
+    mov w10, w16
+    bl var_lookup
+    mov w25, w9
+    cmn w9, #1
+    b.eq .Lsema_ad_values
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    mov x19, x9
+    ldurh w9, [x19, #12]
+    ldur w16, [x19, #24]
+    cmp w16, #0
+    b.eq .Lsema_redecl_type
+    and w16, w9, #0xffff
+    ldurh w17, [x23, #2]
+    cmp w16, w17
+    b.ne .Lsema_redecl_arr_type
+    ldur w16, [x19, #24]
+    cmp w16, w26
+    b.ne .Lsema_ad_len_diff
+    bl msg_reset
+    adrp x8, s_var_q
+    add x8, x8, :lo12:s_var_q
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_already_at
+    add x8, x8, :lo12:s_already_at
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x19, #20]
+    mov w10, w16
+    mov x0, x10
+    bl msg_addu
+    adrp x8, s_latest
+    add x8, x8, :lo12:s_latest
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl diag_warn_tok
+    mov w17, #1
+    stur w17, [x23, #24]
+.Lsema_ad_values:
+    ldur w16, [x23, #12]
+    mov w9, w16
+    cmp x9, x26
+    b.hi .Lsema_ad_too_many
+    eor w20, w20, w20
+.Lsema_ad_check:
+    ldur w17, [x23, #12]
+    cmp w20, w17
+    b.hs .Lsema_ad_store
+    ldur w16, [x23, #16]
+    mov w9, w16
+    adds w9, w9, w20
+    adrp x8, g_roots
+    add x8, x8, :lo12:g_roots
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x11
+    add x8, x8, x9, lsl #2
+    ldr w16, [x8]
+    mov w10, w16
+    lsl x17, x10, #4
+    mov x10, x17
+    adrp x8, g_parts
+    add x8, x8, :lo12:g_parts
+    ldr x16, [x8]
+    adds x10, x10, x16
+    ldurh w11, [x23, #2]
+    ldur w16, [x23, #4]
+    mov w12, w16
+    mov x17, #1
+    adrp x8, ca_arr
+    add x8, x8, :lo12:ca_arr
+    str x17, [x8]
+    bl check_assign
+    mov x17, #0
+    adrp x8, ca_arr
+    add x8, x8, :lo12:ca_arr
+    str x17, [x8]
+    adds w20, w20, #1
+    b .Lsema_ad_check
+.Lsema_ad_store:
+    cmn w25, #1
+    b.ne .Lsema_ad_known
+    ldur w16, [x23, #4]
+    mov w10, w16
+    ldurh w11, [x23, #2]
+    bl var_insert
+    mov w25, w9
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    stur w26, [x9, #24]
+    ldurh w10, [x23, #2]
+    bl elem_size
+    sub x11, x26, #1
+    mul x17, x11, x9
+    mov x11, x17
+    adrp x8, g_vars_size
+    add x8, x8, :lo12:g_vars_size
+    ldr x17, [x8]
+    adds x17, x17, x11
+    adrp x8, g_vars_size
+    add x8, x8, :lo12:g_vars_size
+    str x17, [x8]
+.Lsema_ad_known:
+    stur w25, [x23, #8]
+    ldur w16, [x23, #4]
+    mov w10, w16
+    bl tok_line
+    mov w10, w25
+    lsl x17, x10, #5
+    mov x10, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x10, x10, x16
+    stur w9, [x10, #20]
+    b .Lsema_next
+.Lsema_ad_too_many:
+    bl msg_reset
+    adrp x8, s_arr_q
+    add x8, x8, :lo12:s_arr_q
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_has
+    add x8, x8, :lo12:s_has
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov x10, x26
+    mov x0, x10
+    bl msg_addu
+    adrp x8, s_elems_got
+    add x8, x8, :lo12:s_elems_got
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #12]
+    mov w10, w16
+    mov x0, x10
+    bl msg_addu
+    adrp x8, s_values
+    add x8, x8, :lo12:s_values
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    ldur w16, [x23, #4]
+    mov w11, w16
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+.Lsema_ad_len_diff:
+    bl msg_reset
+    adrp x8, s_arr_q
+    add x8, x8, :lo12:s_arr_q
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_decl_with
+    add x8, x8, :lo12:s_decl_with
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x19, #24]
+    mov w10, w16
+    mov x0, x10
+    bl msg_addu
+    adrp x8, s_elements
+    add x8, x8, :lo12:s_elements
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    ldur w16, [x23, #4]
+    mov w11, w16
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+
+.Lsema_redecl_arr_type:
+    mov w26, w9
+    bl msg_reset
+    adrp x8, s_var_q
+    add x8, x8, :lo12:s_var_q
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_already_as
+    add x8, x8, :lo12:s_already_as
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov w10, w26
+    mov w11, #1
+    bl type_desc
+    mov x10, x9
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    ldur w16, [x23, #4]
+    mov w11, w16
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+
+.Lsema_aset:
+    mov x17, #0
+    adrp x8, sm_carry
+    add x8, x8, :lo12:sm_carry
+    str x17, [x8]
+    ldur w16, [x23, #4]
+    mov w10, w16
+    bl var_lookup
+    cmn w9, #1
+    b.eq .Lsema_assign
+    stur w9, [x23, #8]
+    mov w25, w9
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    ldur w16, [x9, #24]
+    cmp w16, #0
+    b.ne .Lsema_aset_arr
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_not_array
+.Lsema_aset_arr:
+    ldurh w9, [x9, #12]
+    and w17, w9, #0xffff
+    sturh w17, [x23, #2]
+    ldur w16, [x23, #16]
+    mov w9, w16
+    adrp x8, g_roots
+    add x8, x8, :lo12:g_roots
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x11
+    add x8, x8, x9, lsl #2
+    ldr w16, [x8]
+    mov w10, w16
+    lsl x17, x10, #4
+    mov x10, x17
+    adrp x8, g_parts
+    add x8, x8, :lo12:g_parts
+    ldr x16, [x8]
+    adds x10, x10, x16
+    mov w11, w25
+    bl check_index
+    ldur w16, [x23, #12]
+    cmp w16, #2
+    b.lo .Lsema_next
+    ldur w16, [x23, #16]
+    mov w9, w16
+    adds w9, w9, #1
+    adrp x8, g_roots
+    add x8, x8, :lo12:g_roots
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x11
+    add x8, x8, x9, lsl #2
+    ldr w16, [x8]
+    mov w10, w16
+    lsl x17, x10, #4
+    mov x10, x17
+    adrp x8, g_parts
+    add x8, x8, :lo12:g_parts
+    ldr x16, [x8]
+    adds x10, x10, x16
+    ldurh w11, [x23, #2]
+    ldur w16, [x23, #4]
+    mov w12, w16
+    mov x17, #1
+    adrp x8, ca_arr
+    add x8, x8, :lo12:ca_arr
+    str x17, [x8]
+    bl check_assign
+    mov x17, #0
+    adrp x8, ca_arr
+    add x8, x8, :lo12:ca_arr
+    str x17, [x8]
+    b .Lsema_next
 
 .Lsema_if_stmt:
     mov x17, #0
@@ -1811,6 +2429,9 @@ FUNC sema
     ldr x16, [x8]
     adds x9, x9, x16
     ldurh w10, [x9, #12]
+    ldur w16, [x9, #24]
+    cmp w16, #0
+    b.ne .Lsema_bad_loop_var
     cmp w10, #1
     b.ne .Lsema_bad_loop_var
     stur w26, [x23, #8]
@@ -1888,6 +2509,8 @@ FUNC sema
     bl diag_error_tok
 .Lsema_bad_loop_var:
     mov w25, w10
+    ldur w16, [x9, #24]
+    mov w19, w16
     bl msg_reset
     adrp x8, s_lvar1
     add x8, x8, :lo12:s_lvar1
@@ -1903,20 +2526,10 @@ FUNC sema
     add x10, x8, #0
     mov x0, x10
     bl msg_addz
-    adrp x8, s_an_int
-    add x8, x8, :lo12:s_an_int
-    add x10, x8, #0
-    cmp w25, #1
-    b.eq .Lsema_lv_msg
-    adrp x8, s_a_str
-    add x8, x8, :lo12:s_a_str
-    add x10, x8, #0
-    cmp w25, #2
-    b.eq .Lsema_lv_msg
-    adrp x8, s_a_bool
-    add x8, x8, :lo12:s_a_bool
-    add x10, x8, #0
-.Lsema_lv_msg:
+    mov w10, w25
+    mov w11, w19
+    bl type_desc
+    mov x10, x9
     mov x0, x10
     bl msg_addz
     adrp x8, s_semantic
@@ -1969,6 +2582,20 @@ FUNC sema
     add x8, x8, :lo12:g_vars
     ldr x16, [x8]
     adds x9, x9, x16
+    ldur w16, [x9, #24]
+    cmp w16, #0
+    b.eq .Lsema_assign_scalar
+    ldur w16, [x23, #4]
+    mov w10, w16
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    b err_need_index
+.Lsema_assign_scalar:
     ldurh w11, [x9, #12]
     and w17, w11, #0xffff
     sturh w17, [x23, #2]
@@ -2078,6 +2705,8 @@ FUNC sema
     mov x10, x19
     bl value_finish
     ldurb w9, [x19, #0]
+    cmp w9, #11
+    b.eq .Lsema_part_elem
     cmp w9, #6
     b.eq .Lsema_part_expr
     cmp w9, #5
@@ -2182,6 +2811,19 @@ FUNC sema
     mov x11, x17
     mov w10, #5
     bl new_piece
+    b .Lsema_part_next
+.Lsema_part_elem:
+    eor w26, w26, w26
+    mov x11, x19
+    adrp x8, g_parts
+    add x8, x8, :lo12:g_parts
+    ldr x16, [x8]
+    subs x11, x11, x16
+    lsr x17, x11, #4
+    mov x11, x17
+    mov w10, #6
+    bl new_piece
+    stur w21, [x9, #8]
 .Lsema_part_next:
     adds w25, w25, #1
     b .Lsema_part
@@ -2362,6 +3004,12 @@ FUNC pool_compact
     ldurh w16, [x23, #0]
     cmp w16, #4
     b.eq .Lpool_compact_stmt_if
+    ldurh w16, [x23, #0]
+    cmp w16, #12
+    b.eq .Lpool_compact_stmt_all
+    ldurh w16, [x23, #0]
+    cmp w16, #13
+    b.eq .Lpool_compact_stmt_all
     ldur w16, [x23, #12]
     cmp w16, #0
     b.eq .Lpool_compact_stmt_next
@@ -2404,6 +3052,34 @@ FUNC pool_compact
     adds x9, x9, x16
     mov x10, x9
     bl intern_tree
+    b .Lpool_compact_stmt_next
+.Lpool_compact_stmt_all:
+    eor w26, w26, w26
+.Lpool_compact_all_loop:
+    ldur w17, [x23, #12]
+    cmp w26, w17
+    b.hs .Lpool_compact_stmt_next
+    ldur w16, [x23, #16]
+    mov w9, w16
+    adds w9, w9, w26
+    adrp x8, g_roots
+    add x8, x8, :lo12:g_roots
+    ldr x16, [x8]
+    mov x11, x16
+    mov x8, x11
+    add x8, x8, x9, lsl #2
+    ldr w16, [x8]
+    mov w9, w16
+    lsl x17, x9, #4
+    mov x9, x17
+    adrp x8, g_parts
+    add x8, x8, :lo12:g_parts
+    ldr x16, [x8]
+    adds x9, x9, x16
+    mov x10, x9
+    bl intern_tree
+    adds w26, w26, #1
+    b .Lpool_compact_all_loop
 .Lpool_compact_stmt_next:
     adds x23, x23, #32
     b .Lpool_compact_stmt
@@ -2774,6 +3450,10 @@ FUNC check_cond
     b.eq .Lcheck_cond_done
     cmp w10, #5
     b.eq .Lcheck_cond_done
+    cmp w21, #11
+    b.eq .Lcheck_cond_done
+    cmp w10, #11
+    b.eq .Lcheck_cond_done
     cmp w21, w10
     b.ne .Lcheck_cond_fold_diff
     cmp w21, #4
@@ -3058,4 +3738,221 @@ block_is_loop:
     cmp x16, #2
     ldp x29, x30, [sp], #16
     ret
+
+    .globl elem_size
+elem_size:
+    stp x29, x30, [sp, #-16]!
+    mov w9, #4
+    cmp w10, #1
+    b.eq .Lelem_size_r
+    mov w9, #1
+    cmp w10, #3
+    b.eq .Lelem_size_r
+    mov w9, #16
+.Lelem_size_r:
+    ldp x29, x30, [sp], #16
+    ret
+
+type_desc:
+    stp x29, x30, [sp, #-16]!
+    tst w11, w11
+    b.ne .Ltype_desc_arr
+    adrp x8, s_an_int
+    add x8, x8, :lo12:s_an_int
+    add x9, x8, #0
+    cmp w10, #1
+    b.eq .Ltype_desc_r
+    adrp x8, s_a_str
+    add x8, x8, :lo12:s_a_str
+    add x9, x8, #0
+    cmp w10, #2
+    b.eq .Ltype_desc_r
+    adrp x8, s_a_bool
+    add x8, x8, :lo12:s_a_bool
+    add x9, x8, #0
+    ldp x29, x30, [sp], #16
+    ret
+.Ltype_desc_arr:
+    adrp x8, s_an_int_arr
+    add x8, x8, :lo12:s_an_int_arr
+    add x9, x8, #0
+    cmp w10, #1
+    b.eq .Ltype_desc_r
+    adrp x8, s_a_str_arr
+    add x8, x8, :lo12:s_a_str_arr
+    add x9, x8, #0
+    cmp w10, #2
+    b.eq .Ltype_desc_r
+    adrp x8, s_a_bool_arr
+    add x8, x8, :lo12:s_a_bool_arr
+    add x9, x8, #0
+.Ltype_desc_r:
+    ldp x29, x30, [sp], #16
+    ret
+
+err_not_array:
+    stp x29, x30, [sp, #-16]!
+    mov w19, w10
+    bl msg_reset
+    adrp x8, s_var_q
+    add x8, x8, :lo12:s_var_q
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov w10, w19
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_not_arr
+    add x8, x8, :lo12:s_not_arr
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    mov w11, w19
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+
+err_need_index:
+    stp x29, x30, [sp, #-16]!
+    mov w19, w10
+    bl msg_reset
+    adrp x8, s_arr_q
+    add x8, x8, :lo12:s_arr_q
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov w10, w19
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_need_idx
+    add x8, x8, :lo12:s_need_idx
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov w10, w19
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_idx_one
+    add x8, x8, :lo12:s_idx_one
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    mov w11, w19
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+
+FUNC check_index
+    mov x19, x10
+    mov w24, w11
+    bl check_value
+    mov w23, w9
+    mov x10, x19
+    bl value_finish
+    cmp w23, #1
+    b.ne .Lcheck_index_bad
+    ldurb w16, [x19, #0]
+    cmp w16, #1
+    b.ne .Lcheck_index_ok
+    mov w9, w24
+    lsl x17, x9, #5
+    mov x9, x17
+    adrp x8, g_vars
+    add x8, x8, :lo12:g_vars
+    ldr x16, [x8]
+    adds x9, x9, x16
+    mov x25, x9
+    ldur x16, [x19, #8]
+    mov x26, x16
+    cmp x26, #1
+    b.lt .Lcheck_index_out
+    ldur w16, [x25, #24]
+    mov w9, w16
+    cmp x26, x9
+    b.gt .Lcheck_index_out
+.Lcheck_index_ok:
+    mov sp, x29
+    ldp x19, x20, [sp, #16]
+    ldp x21, x22, [sp, #32]
+    ldp x23, x24, [sp, #48]
+    ldp x25, x26, [sp, #64]
+    ldp x27, x28, [sp, #80]
+    ldp x29, x30, [sp], #96
+    ret
+.Lcheck_index_bad:
+    bl msg_reset
+    adrp x8, s_idx_type
+    add x8, x8, :lo12:s_idx_type
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov w10, w23
+    bl type_name
+    mov x10, x9
+    mov x0, x10
+    bl msg_addz
+    mov x10, x19
+    bl value_pos
+    adrp x8, s_type
+    add x8, x8, :lo12:s_type
+    add x10, x8, #0
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
+.Lcheck_index_out:
+    bl msg_reset
+    adrp x8, s_idx1
+    add x8, x8, :lo12:s_idx1
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    tst x26, x26
+    b.pl .Lcheck_index_out_pos
+    mov w17, #45
+    bfi x10, x17, #0, #8
+    mov x0, x10
+    bl msg_addc
+    negs x17, x26
+    mov x26, x17
+.Lcheck_index_out_pos:
+    mov x10, x26
+    mov x0, x10
+    bl msg_addu
+    adrp x8, s_idx2
+    add x8, x8, :lo12:s_idx2
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x25, #24]
+    mov w10, w16
+    mov x0, x10
+    bl msg_addu
+    adrp x8, s_idx3
+    add x8, x8, :lo12:s_idx3
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    ldur w16, [x25, #8]
+    mov w10, w16
+    mov x0, x10
+    bl msg_tok
+    adrp x8, s_quote
+    add x8, x8, :lo12:s_quote
+    add x10, x8, #0
+    mov x0, x10
+    bl msg_addz
+    mov x10, x19
+    bl value_pos
+    adrp x8, s_semantic
+    add x8, x8, :lo12:s_semantic
+    add x10, x8, #0
+    mov x0, x10
+    mov x1, x11
+    bl diag_error_tok
 

@@ -1,0 +1,1 @@
+arr_elem_type.es:2:8: type error: cannot assign str to int array 'a'

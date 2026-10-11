@@ -128,6 +128,11 @@ rt_str_eq:
 2:  mov w0, #0
     ret
 
+rt_index:
+    adr x9, rt_s_index
+    mov x10, #(rt_s_index_end - rt_s_index)
+    b rt_fail
+
 rt_div_zero:
     adr x9, rt_s_divz
     mov x10, #(rt_s_divz_end - rt_s_divz)
@@ -322,6 +327,9 @@ rt_s_inbig_end:
 rt_s_divz:
     .ascii "runtime error: division by zero on line "
 rt_s_divz_end:
+rt_s_index:
+    .ascii "runtime error: array index out of range on line "
+rt_s_index_end:
     .p2align 2
 
 rt_end:
@@ -339,6 +347,7 @@ rt_offsets:
     .word rt_str_eq - rt_start
     .word rt_input_str - rt_start
     .word rt_input_int - rt_start
+    .word rt_index - rt_start
 rt_consts:
     .ascii "truefalsenull"
     .byte 0, 0, 0

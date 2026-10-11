@@ -1,0 +1,1 @@
+arr_loop_var.es:2:5: semantic error: loop variable 'a' must be int, it is declared as an int array

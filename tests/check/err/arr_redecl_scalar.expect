@@ -1,0 +1,1 @@
+arr_redecl_scalar.es:2:1: semantic error: variable 'a' is already declared as an int array
