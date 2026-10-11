@@ -1,5 +1,5 @@
 /build/
-/.ender/
+.ender/
 /ender
 /ender.exe
 *.o

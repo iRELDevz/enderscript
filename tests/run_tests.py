@@ -47,7 +47,7 @@ for group, mode in [("check/ok", "ok"), ("check/err", "err"), ("check/warn", "wa
     names, d = found
     for name in names:
         base = name[:-3]
-        code, out, err = run([compiler, "check", name], d)
+        code, out, err = run([compiler, "examine", name], d)
         label = group + "/" + base
         if mode == "ok":
             result(label, code == 0 and err == "", ["exit %d" % code, "stderr: " + err.strip()])
@@ -66,12 +66,12 @@ if found:
         base = name[:-3]
         exe = os.path.join(out_dir, base)
         label = "run/" + base
-        code, out, err = run([compiler, "build", name, "-o", exe], d)
+        code, out, err = run([compiler, "examine", name], d)
         if code != 0:
             result(label, False, ["build exit %d: %s" % (code, err.strip())])
             continue
         ip = os.path.join(d, base + ".in")
-        code, out, err = run([exe], d, open(ip, "rb").read() if os.path.exists(ip) else None)
+        code, out, err = run([compiler, name], d, open(ip, "rb").read() if os.path.exists(ip) else None)
         expect = read(os.path.join(d, base + ".out"))
         result(label, code == 0 and out == expect, ["expected: %r" % expect, "actual:   %r" % out, "exit %d" % code])
 

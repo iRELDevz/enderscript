@@ -166,11 +166,11 @@ for n in names:
 src = os.path.join(work, "b%d.es" % seed)
 open(src, "w", newline="\n").write("\n".join(lines) + "\n")
 exe = os.path.join(work, "b%d.exe" % seed)
-r = subprocess.run([ender, "build", src, "-o", exe], capture_output=True)
+r = subprocess.run([ender, "examine", src], capture_output=True)
 if r.returncode:
     print("BUILD FAILED", seed, r.stderr.decode(errors="replace")[:300])
     sys.exit(1)
-got = subprocess.run([exe], capture_output=True).stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
+got = subprocess.run([ender, src], cwd=work, capture_output=True).stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
 if got != out:
     print("MISMATCH seed", seed, len(out), len(got))
     for i, (x, y) in enumerate(zip(out, got)):

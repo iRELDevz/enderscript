@@ -350,11 +350,11 @@ if len(expected) > 300000:
 src = os.path.join(work, "if%d.es" % seed)
 open(src, "w", newline="\n").write("\n".join(lines) + "\n")
 exe = os.path.join(work, "if%d.exe" % seed)
-r = subprocess.run([ender, "build", src, "-o", exe], capture_output=True)
+r = subprocess.run([ender, "examine", src], capture_output=True)
 if r.returncode:
     print("BUILD FAILED seed", seed, r.stderr.decode(errors="replace")[:400])
     sys.exit(1)
-got = subprocess.run([exe], capture_output=True).stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
+got = subprocess.run([ender, src], cwd=work, capture_output=True).stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
 if got != expected:
     print("MISMATCH seed", seed)
     for i, (a, b) in enumerate(zip(expected, got)):

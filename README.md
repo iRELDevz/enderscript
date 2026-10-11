@@ -68,16 +68,14 @@ The result is `ender`.
 ## Usage
 
 ```
-./ender check <file.es>
-./ender check --syntax <file.es>
-./ender build <file.es>
-./ender build <file.es> -o <out>
+./ender <file.es>
+./ender examine <file.es>
 ./ender run <file.es>
 ./ender --version
 ./ender --help
 ```
 
-`check` checks syntax, semantics, and types. `build` produces `<file>`. `run` builds the program into the `.ender` folder and runs it.
+`ender <file.es>` builds the program into the `.ender` folder and runs it. `examine` checks syntax, semantics, and types and runs code generation without writing a file. `run` runs the program built earlier in `.ender` without building it again.
 
 ## Example program
 
@@ -103,7 +101,7 @@ for i in range(5):
 print>>"jumlah "{jumlah}
 ```
 
-Run it with `ender run main.es`. Output:
+Run it with `ender main.es`. Output:
 
 ```
 halo Ender, umur 17
@@ -422,16 +420,14 @@ Hasilnya `ender`.
 ## Pemakaian
 
 ```
-./ender check <file.es>
-./ender check --syntax <file.es>
-./ender build <file.es>
-./ender build <file.es> -o <out>
+./ender <file.es>
+./ender examine <file.es>
 ./ender run <file.es>
 ./ender --version
 ./ender --help
 ```
 
-`check` memeriksa sintaks, semantik, dan tipe. `build` menghasilkan `<file>`. `run` membangun program ke folder `.ender` lalu menjalankannya.
+`ender <file.es>` membangun program ke folder `.ender` lalu menjalankannya. `examine` memeriksa sintaks, semantik, dan tipe, lalu menjalankan pembuatan kode mesin tanpa menulis file. `run` menjalankan program yang sudah dibangun di `.ender` tanpa membangun ulang.
 
 ## Contoh program
 
@@ -457,7 +453,7 @@ for i in range(5):
 print>>"jumlah "{jumlah}
 ```
 
-Lalu jalankan dengan `ender run main.es`. Outputnya:
+Lalu jalankan dengan `ender main.es`. Outputnya:
 
 ```
 halo Ender, umur 17
@@ -776,16 +772,14 @@ Windows と Linux の x64、x86、ARM64 で、同じ構文と同じ結果にな�
 ## 使い方
 
 ```
-./ender check <file.es>
-./ender check --syntax <file.es>
-./ender build <file.es>
-./ender build <file.es> -o <out>
+./ender <file.es>
+./ender examine <file.es>
 ./ender run <file.es>
 ./ender --version
 ./ender --help
 ```
 
-`check` は構文、意味、型をチェックします。`build` は `<file>` を生成します。`run` はプログラムを `.ender` フォルダにビルドしてから実行します。
+`ender <file.es>` はプログラムを `.ender` フォルダにビルドしてから実行します。`examine` は構文、意味、型をチェックし、ファイルを書かずにコード生成まで行います。`run` は `.ender` にビルド済みのプログラムを再ビルドせずに実行します。
 
 ## サンプルプログラム
 
@@ -811,7 +805,7 @@ for i in range(5):
 print>>"jumlah "{jumlah}
 ```
 
-`ender run main.es` で実行します。出力:
+`ender main.es` で実行します。出力:
 
 ```
 halo Ender, umur 17
@@ -1130,16 +1124,14 @@ Windows x64 上的基准测试结果:
 ## 用法
 
 ```
-./ender check <file.es>
-./ender check --syntax <file.es>
-./ender build <file.es>
-./ender build <file.es> -o <out>
+./ender <file.es>
+./ender examine <file.es>
 ./ender run <file.es>
 ./ender --version
 ./ender --help
 ```
 
-`check` 检查语法、语义和类型。`build` 生成 `<file>`。`run` 将程序构建到 `.ender` 文件夹后运行。
+`ender <file.es>` 将程序构建到 `.ender` 文件夹后运行。`examine` 检查语法、语义和类型，并在不写入文件的情况下完成代码生成。`run` 运行之前在 `.ender` 中构建好的程序，不会重新构建。
 
 ## 示例程序
 
@@ -1165,7 +1157,7 @@ for i in range(5):
 print>>"jumlah "{jumlah}
 ```
 
-用 `ender run main.es` 运行。输出:
+用 `ender main.es` 运行。输出:
 
 ```
 halo Ender, umur 17
@@ -1484,16 +1476,14 @@ Windows और Linux पर x64, x86 और ARM64 के लिए एक जै
 ## उपयोग
 
 ```
-./ender check <file.es>
-./ender check --syntax <file.es>
-./ender build <file.es>
-./ender build <file.es> -o <out>
+./ender <file.es>
+./ender examine <file.es>
 ./ender run <file.es>
 ./ender --version
 ./ender --help
 ```
 
-`check` सिंटैक्स, सिमैंटिक्स और टाइप की जाँच करता है। `build` `<file>` बनाता है। `run` प्रोग्राम को `.ender` फ़ोल्डर में बिल्ड करके चलाता है।
+`ender <file.es>` प्रोग्राम को `.ender` फ़ोल्डर में बिल्ड करके चलाता है। `examine` सिंटैक्स, सिमैंटिक्स और टाइप की जाँच करता है और कोई फ़ाइल लिखे बिना कोड जनरेशन तक चलाता है। `run` `.ender` में पहले से बिल्ड किए गए प्रोग्राम को दोबारा बिल्ड किए बिना चलाता है।
 
 ## उदाहरण प्रोग्राम
 
@@ -1519,7 +1509,7 @@ for i in range(5):
 print>>"jumlah "{jumlah}
 ```
 
-इसे `ender run main.es` से चलाएँ। आउटपुट:
+इसे `ender main.es` से चलाएँ। आउटपुट:
 
 ```
 halo Ender, umur 17

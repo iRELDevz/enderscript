@@ -115,11 +115,11 @@ for _ in range(rng.randint(2, 5)):
 src = os.path.join(work, "j%d.es" % seed)
 open(src, "w", newline="\n").write("\n".join(lines) + "\n")
 exe = os.path.join(work, "j%d.exe" % seed)
-r = subprocess.run([ender, "build", src, "-o", exe], capture_output=True)
+r = subprocess.run([ender, "examine", src], capture_output=True)
 if r.returncode:
     print("BUILD FAILED", seed, r.stderr.decode(errors="replace")[:300])
     sys.exit(1)
-got = subprocess.run([exe], capture_output=True).stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
+got = subprocess.run([ender, src], cwd=work, capture_output=True).stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
 if got != out:
     print("MISMATCH seed", seed)
     for i, (p, q) in enumerate(zip(out, got)):

@@ -14,49 +14,44 @@ out_path: .zero 8
 s_version: .asciz "EnderScript 0.1.1 (Windows ARM64)\r\n"
 s_help:    .ascii "EnderScript 0.1.1 (Windows ARM64)\r\n\r\n"
            .ascii "Usage:\r\n"
-           .ascii "  ender check <file.es>            Check syntax, semantics, and types\r\n"
-           .ascii "  ender check --syntax <file.es>   Check syntax only\r\n"
-           .ascii "  ender build <file.es>            Build <file>.exe\r\n"
-           .ascii "  ender build <file.es> -o <out>   Build the selected output path\r\n"
-           .ascii "  ender run <file.es>              Build into .ender\\ and run\r\n"
+           .ascii "  ender <file.es>             Build into .ender\\ and run\r\n"
+           .ascii "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe\r\n"
+           .ascii "  ender run <file.es>         Run the program built earlier in .ender\\\r\n"
            .ascii "  ender --version\r\n"
            .asciz "  ender --help\r\n"
 s_crlf:      .asciz "\r\n"
-s_ender_pre: .asciz ".ender\\"
+s_ender_pre: .asciz ".\\.ender\\"
+s_first:     .asciz "' first\r\n"
 s_exe:       .asciz ".exe"
 #else
 s_version: .asciz "EnderScript 0.1.1 (Linux ARM64)\n"
 s_help:    .ascii "EnderScript 0.1.1 (Linux ARM64)\n\n"
            .ascii "Usage:\n"
-           .ascii "  ender check <file.es>            Check syntax, semantics, and types\n"
-           .ascii "  ender check --syntax <file.es>   Check syntax only\n"
-           .ascii "  ender build <file.es>            Build <file>\n"
-           .ascii "  ender build <file.es> -o <out>   Build the selected output path\n"
-           .ascii "  ender run <file.es>              Build into .ender/ and run\n"
+           .ascii "  ender <file.es>             Build into .ender/ and run\n"
+           .ascii "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe\n"
+           .ascii "  ender run <file.es>         Run the program built earlier in .ender/\n"
            .ascii "  ender --version\n"
            .asciz "  ender --help\n"
 s_crlf:      .asciz "\n"
 s_ender_pre: .asciz ".ender/"
+s_first:     .asciz "' first\n"
 s_exe:       .asciz ""
 #endif
 a_version:   .asciz "--version"
 a_help:      .asciz "--help"
-a_check:     .asciz "check"
-a_syntax:    .asciz "--syntax"
-a_build:     .asciz "build"
+a_examine:   .asciz "examine"
 a_run:       .asciz "run"
-a_o:         .asciz "-o"
 s_unknown:   .asciz "unknown command '"
 s_unexpect:  .asciz "unexpected argument '"
 s_missing:   .asciz "missing input file"
-s_missing_o: .asciz "missing output path after -o"
+s_err_q:     .asciz "error: '"
+s_not_built: .asciz "' is not built yet, run 'ender "
 s_ext:       .asciz "input file must use the .es extension"
 s_big:       .asciz "source file is larger than 16 MB"
 s_cant_read: .asciz "cannot read '"
 s_cant_wr:   .asciz "cannot write '"
 s_cant_run:  .asciz "cannot run '"
 s_ok:        .asciz "ok "
-s_built:     .asciz "built "
 s_ender_dir: .asciz ".ender"
 s_empty:     .asciz ""
 
@@ -286,12 +281,14 @@ start:
     cbnz x0, .Lst_version
     ARGEQ 0, a_help
     cbnz x0, .Lst_help
-    ARGEQ 0, a_check
-    cbnz x0, .Lst_check
-    ARGEQ 0, a_build
-    cbnz x0, .Lst_build
+    ARGEQ 0, a_examine
+    cbnz x0, .Lst_examine
     ARGEQ 0, a_run
     cbnz x0, .Lst_run
+    LA x9, argv
+    ldr x0, [x9]
+    bl is_es
+    cbnz x0, .Lst_build_run
     LA x0, s_unknown
     LA x9, argv
     ldr x1, [x9]
@@ -321,72 +318,20 @@ start:
     mov w0, #1
     bl sys_exit
 
-.Lst_check:
-    mov w20, #0
-    mov x21, #1
+.Lst_examine:
     cmp x19, #2
     b.lo missing
-    ARGEQ 1, a_syntax
-    cbz x0, 3f
-    mov w20, #1
-    mov x21, #2
-3:  cmp x19, x21
-    b.ls missing
-    add x0, x21, #1
-    cmp x19, x0
+    mov x0, #2
     b.hi extra_arg
-    LA x9, argv
-    ldr x22, [x9, x21, lsl #3]
-    mov x0, x22
-    mov w1, w20
-    bl frontend
-    LA x0, s_ok
-    bl write_outz
-    mov x0, x22
-    bl write_outz
-    LA x0, s_crlf
-    bl write_outz
-    mov w0, #0
-    bl sys_exit
-
-.Lst_build:
-    cmp x19, #2
-    b.lo missing
     LA x9, argv
     ldr x22, [x9, #8]
-    b.eq .Lst_build_default
-    ARGEQ 2, a_o
-    cbnz x0, 4f
-    mov x0, #2
-    b extra_arg
-4:  cmp x19, #4
-    b.lo .Lst_missing_o
-    mov x0, #4
-    b.hi extra_arg
-    LA x9, argv
-    ldr x23, [x9, #24]
-    b .Lst_build_go
-.Lst_missing_o:
-    LA x0, s_missing_o
-    bl fatal
-.Lst_build_default:
-    mov x0, x22
-    bl zlen
-    sub x1, x0, #3
-    mov x0, x22
-    LA x2, s_empty
-    LA x3, s_exe
-    bl join_stem
-    mov x23, x0
-.Lst_build_go:
     mov x0, x22
     mov w1, #0
     bl frontend
-    mov x0, x23
-    bl emit_and_write
-    LA x0, s_built
+    bl codegen
+    LA x0, s_ok
     bl write_outz
-    mov x0, x23
+    mov x0, x22
     bl write_outz
     LA x0, s_crlf
     bl write_outz
@@ -401,9 +346,83 @@ start:
     LA x9, argv
     ldr x22, [x9, #8]
     mov x0, x22
+    bl is_es
+    cbnz x0, 1f
+    LA x0, s_ext
+    bl fatal
+1:  mov x0, x22
+    bl exe_path
+    mov x23, x0
+    bl read_file
+    cbz x0, 2f
+    mov x0, x23
+    bl run_process
+    cmn x0, #1
+    b.ne .Lst_exit
+2:  LA x0, s_err_q
+    bl write_errz
+    mov x0, x23
+    bl write_errz
+    LA x0, s_not_built
+    bl write_errz
+    mov x0, x22
+    bl write_errz
+    LA x0, s_first
+    bl write_errz
+    mov w0, #1
+    bl sys_exit
+
+.Lst_build_run:
+    mov x0, #1
+    cmp x19, #1
+    b.hi extra_arg
+    LA x9, argv
+    ldr x22, [x9]
+    mov x0, x22
     mov w1, #0
     bl frontend
     mov x0, x22
+    bl exe_path
+    mov x23, x0
+    LA x0, s_ender_dir
+    bl make_dir
+    mov x0, x23
+    bl emit_and_write
+    mov x0, x23
+    bl run_process
+    cmn x0, #1
+    b.ne .Lst_exit
+    LA x0, s_cant_run
+    mov x1, x23
+    bl fatal_path
+.Lst_exit:
+    bl sys_exit
+
+LEAF is_es
+    mov x9, x0
+    mov x10, #0
+1:  ldrb w11, [x9, x10]
+    cbz w11, 2f
+    add x10, x10, #1
+    b 1b
+2:  mov x0, #0
+    cmp x10, #3
+    b.lo 3f
+    add x9, x9, x10
+    ldrb w11, [x9, #-3]
+    cmp w11, #'.'
+    b.ne 3f
+    ldrb w11, [x9, #-2]
+    cmp w11, #'e'
+    b.ne 3f
+    ldrb w11, [x9, #-1]
+    cmp w11, #'s'
+    b.ne 3f
+    mov x0, #1
+3:  ret
+
+FUNC exe_path
+    mov x22, x0
     bl zlen
     add x24, x22, x0
     sub x24, x24, #3
@@ -414,7 +433,7 @@ start:
     cmp w9, #'/'
     b.eq 6f
 #if defined(TARGET_WINDOWS)
-    cmp w9, #'\\'
+    cmp w9, #92
     b.eq 6f
     cmp w9, #':'
     b.eq 6f
@@ -426,16 +445,4 @@ start:
     LA x2, s_ender_pre
     LA x3, s_exe
     bl join_stem
-    mov x23, x0
-    LA x0, s_ender_dir
-    bl make_dir
-    mov x0, x23
-    bl emit_and_write
-    mov x0, x23
-    bl run_process
-    cmn x0, #1
-    b.ne 7f
-    LA x0, s_cant_run
-    mov x1, x23
-    bl fatal_path
-7:  bl sys_exit
+    ENDF

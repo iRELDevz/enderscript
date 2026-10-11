@@ -32,23 +32,22 @@ jobs:
       - name: Hello world
         run: |
           printf 'print>>"Hello World"' > hello.es
-          ./ender build hello.es
-          ./hello
+          ./ender hello.es
+          ./ender run hello.es
+          ./ender examine hello.es
       - name: Tests
         run: python3 tests/run_tests.py ./ender
       - name: Runtime division by zero
         run: |
           printf 'a.int = 10\nb.int = 0\nc.int = a / b\n' > divzero.es
-          ./ender build divzero.es
           set +e
-          ./divzero
+          ./ender divzero.es
           test $? -eq 1
       - name: Runtime array index
         run: |
           printf 'a.int[3] = 1, 2, 3\ni.int = 4\nprint>>a[i]\n' > badidx.es
-          ./ender build badidx.es
           set +e
-          ./badidx 2> err.txt
+          ./ender badidx.es 2> err.txt
           code=$?
           set -e
           test $code -eq 1
