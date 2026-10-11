@@ -165,6 +165,14 @@ rt_fail:
     push 1
     call [ebx + RT_EXIT]
 
+rt_index:
+    call .here
+.here:
+    pop eax
+    add eax, rt_s_index - .here
+    mov ecx, rt_s_index_len
+    jmp rt_fail
+
 rt_str_eq:
     push esi
     push edi
@@ -331,6 +339,8 @@ rt_s_inbig db "runtime error: too much input on line "
 rt_s_inbig_len equ $ - rt_s_inbig
 rt_s_divz db "runtime error: division by zero on line "
 rt_s_divz_len equ $ - rt_s_divz
+rt_s_index db "runtime error: array index out of range on line "
+rt_s_index_len equ $ - rt_s_index
 
 
 rt_end:
@@ -347,6 +357,7 @@ rt_offsets:
     dd rt_str_eq - rt_start
     dd rt_input_str - rt_start
     dd rt_input_int - rt_start
+    dd rt_index - rt_start
 
 rt_consts:
     db "truefalsenull", 0, 0, 0

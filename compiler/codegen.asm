@@ -4,6 +4,7 @@
 extern rt_start, rt_size, rt_offsets
 extern x86_text_base, x86_bytes, x86_imm32, x86_imm16, x86_imm8, x86_op_abs
 extern x86_call_rel, x86_text_offset
+extern elem_size
 extern pe_layout, pe_finish
 extern pe_R, pe_D, pe_I, pe_T, pe_entry, pe_text_file, g_image
 
@@ -17,6 +18,7 @@ extern pe_R, pe_D, pe_I, pe_T, pe_entry, pe_text_file, g_image
 %define RT_FN_STR_EQ     24
 %define RT_FN_INPUT_STR  28
 %define RT_FN_INPUT_INT  32
+%define RT_FN_INDEX      36
 
 %define IAT_GETSTDHANDLE 60
 %define IAT_WRITEFILE    64
@@ -79,6 +81,9 @@ mg_m      resd 1
 mg_s      resd 1
 cg_inuse  resd 1
 cg_inoff  resd 1
+ix_c      resd 1
+ad_size   resd 1
+ad_type   resd 1
 cg_bstack resb B_SIZE * (MAX_NEST + 1)
 
 section .text
@@ -259,7 +264,17 @@ FUNC codegen
     je .group
     cmp eax, SK_INPUT
     je .input
+    cmp eax, SK_ADECL
+    je .adecl
+    cmp eax, SK_ASET
+    je .aset
     call emit_store
+    jmp .next
+.adecl:
+    call emit_adecl
+    jmp .next
+.aset:
+    call emit_aset
     jmp .next
 .input:
     call emit_out_body
@@ -427,6 +442,8 @@ emit_store:
     movzx eax, byte [ebx + V_KIND]
     cmp eax, VK_EXPR
     je .store_expr
+    cmp eax, VK_ELEM
+    je .store_elem
     cmp eax, VK_VAR
     je .copy_var
     cmp eax, VK_NULL
@@ -447,6 +464,30 @@ emit_store:
     mov ecx, [cg_target]
     call emit_expr
     OPA 0xA3, 1, [cg_dst]
+    jmp .done
+.store_elem:
+    mov ecx, [cg_target]
+    mov edx, [cg_type]
+    call load_value
+    cmp dword [cg_type], TY_INT
+    jne .se_not_int
+    OPA 0xA3, 1, [cg_dst]
+    jmp .done
+.se_not_int:
+    cmp dword [cg_type], TY_BOOL
+    jne .se_str
+    OPA 0xA2, 1, [cg_dst]
+    jmp .done
+.se_str:
+    push edx
+    OPA 0xA3, 1, [cg_dst]
+    pop edx
+    push edx
+    BYTES 0x158966, 3
+    mov edx, [cg_dst]
+    add edx, 8
+    call x86_imm32
+    pop edx
     jmp .done
 .store_bool:
     OPA 0x05C6, 2, [cg_dst]
@@ -558,6 +599,8 @@ emit_out_body:
     CALL_RT RT_FN_WRITE
     jmp .piece
 .piece_var:
+    cmp eax, PK_ELEM
+    je .piece_elem
     cmp eax, PK_EXPR
     jne .piece_plain
     mov ecx, [ebx + P_A]
@@ -584,6 +627,27 @@ emit_out_body:
     call x86_imm32
     CALL_RT RT_FN_WRITE_STR
     jmp .piece
+.piece_elem:
+    mov ecx, [ebx + P_A]
+    call node_addr
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    mov eax, [ebx + P_B]
+    cmp eax, TY_INT
+    jne .pc_bool
+    BYTES 0x098B, 2
+    CALL_RT RT_FN_WRITE_INT
+    jmp .piece
+.pc_bool:
+    cmp eax, TY_BOOL
+    jne .pc_str
+    BYTES 0x09B60F, 3
+    CALL_RT RT_FN_WRITE_BOOL
+    jmp .piece
+.pc_str:
+    CALL_RT RT_FN_WRITE_STR
+    jmp .piece
 .done:
     pop ebx
     pop esi
@@ -606,7 +670,10 @@ try_update_in_place:
     jne .no
     call node_addr
     cmp byte [eax + V_KIND], VK_INT
+    je .swap
+    cmp byte [eax + V_KIND], VK_ELEM
     jne .check
+.swap:
     xchg ecx, edx
 .check:
     call node_addr
@@ -616,6 +683,8 @@ try_update_in_place:
     jne .no
     mov ecx, edx
     call node_addr
+    cmp byte [eax + V_KIND], VK_ELEM
+    je .elem
     cmp byte [eax + V_KIND], VK_INT
     jne .no
     mov esi, [eax + V_DATA]
@@ -638,6 +707,18 @@ try_update_in_place:
     jmp .yes
 .dec:
     OPA 0x0DFF, 2, [cg_dst]
+    jmp .yes
+.elem:
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    BYTES 0x018B, 2
+    cmp dword [esp], OP_SUB
+    je .elem_sub
+    OPA 0x0501, 2, [cg_dst]
+    jmp .yes
+.elem_sub:
+    OPA 0x0529, 2, [cg_dst]
 .yes:
     pop eax
     mov eax, 1
@@ -661,13 +742,15 @@ emit_expr:
     je .const
     cmp eax, VK_VAR
     je .var
+    cmp eax, VK_ELEM
+    je .elem
     movzx ebx, byte [esi + V_NEG]
     cmp ebx, OP_NEG
     je .neg
     mov ecx, [esi + V_DATA + 4]
     call node_addr
-    cmp byte [eax + V_KIND], VK_EXPR
-    jne .right_simple
+    cmp byte [eax + V_KIND], VK_VAR
+    jbe .right_simple
     cmp ebx, OP_ADD
     je .try_left
     cmp ebx, OP_MUL
@@ -675,8 +758,8 @@ emit_expr:
 .try_left:
     mov ecx, [esi + V_DATA]
     call node_addr
-    cmp byte [eax + V_KIND], VK_EXPR
-    jne .left_simple
+    cmp byte [eax + V_KIND], VK_VAR
+    jbe .left_simple
 .general:
     mov ecx, [esi + V_DATA]
     call emit_expr
@@ -781,6 +864,12 @@ emit_expr:
     call var_abs
     mov edx, eax
     OPA 0xA1, 1, edx
+    jmp .done
+.elem:
+    mov ecx, [esi + V_DATA]
+    mov edx, [esi + V_DATA + 4]
+    call elem_addr
+    BYTES 0x018B, 2
 .done:
     pop ebx
     pop esi
@@ -1487,6 +1576,8 @@ emit_compare:
     call node_addr
     cmp byte [eax + V_KIND], VK_VAR
     je .bool_left_var
+    cmp byte [eax + V_KIND], VK_ELEM
+    je .bool_left_elem
     mov edx, [eax + V_DATA]
     push edx
     BYTES 0xB8, 1
@@ -1497,11 +1588,19 @@ emit_compare:
     call var_abs
     mov edx, eax
     OPA 0x05B60F, 3, edx
+    jmp .bool_right
+.bool_left_elem:
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    BYTES 0x01B60F, 3
 .bool_right:
     mov ecx, ebp
     call node_addr
     cmp byte [eax + V_KIND], VK_VAR
     je .bool_right_var
+    cmp byte [eax + V_KIND], VK_ELEM
+    je .bool_right_elem
     mov edx, [eax + V_DATA]
     push edx
     BYTES 0x3D, 1
@@ -1512,6 +1611,17 @@ emit_compare:
     call var_abs
     mov edx, eax
     OPA 0x0DB60F, 3, edx
+    BYTES 0xC839, 2
+    jmp .bool_cc
+.bool_right_elem:
+    push eax
+    BYTES 0x50, 1
+    pop eax
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    BYTES 0x09B60F, 3
+    BYTES 0x58, 1
     BYTES 0xC839, 2
 .bool_cc:
     mov ecx, [cg_tmp + 8]
@@ -1525,7 +1635,17 @@ emit_compare:
     je .b_var
     cmp edx, VK_STR
     je .b_lit
+    cmp edx, VK_ELEM
+    je .b_elem
     BYTES 0xC031006A, 4
+    jmp .a
+.b_elem:
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    BYTES 0x0841B70F, 4
+    BYTES 0x50, 1
+    BYTES 0x018B, 2
     jmp .a
 .b_var:
     call var_abs
@@ -1555,7 +1675,20 @@ emit_compare:
     je .a_var
     cmp edx, VK_STR
     je .a_lit
+    cmp edx, VK_ELEM
+    je .a_elem
     BYTES 0xD231C931, 4
+    jmp .call
+.a_elem:
+    push eax
+    BYTES 0x50, 1
+    pop eax
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    BYTES 0x0851B70F, 4
+    BYTES 0x098B, 2
+    BYTES 0x58, 1
     jmp .call
 .a_var:
     call var_abs
@@ -1829,6 +1962,8 @@ emit_input:
     shl ecx, 5
     add ecx, [g_vars]
     movzx ebx, word [ecx + VR_TYPE]
+    cmp dword [esi + S_MODETOK], NO_TOKEN
+    jne .elem
     call var_abs_idx
     push eax
     BYTES 0xBA, 1
@@ -1846,6 +1981,29 @@ emit_input:
     CALL_RT RT_FN_INPUT_INT
     pop edx
     OPA 0xA3, 1, edx
+    jmp .r
+.elem:
+    cmp ebx, TY_INT
+    je .elem_int
+    mov ecx, [esi + S_VAR]
+    mov edx, [esi + S_MODETOK]
+    call elem_addr
+    BYTES 0xBA, 1
+    mov edx, [cg_line]
+    call x86_imm32
+    CALL_RT RT_FN_INPUT_STR
+    jmp .r
+.elem_int:
+    BYTES 0xBA, 1
+    mov edx, [cg_line]
+    call x86_imm32
+    CALL_RT RT_FN_INPUT_INT
+    BYTES 0x50, 1
+    mov ecx, [esi + S_VAR]
+    mov edx, [esi + S_MODETOK]
+    call elem_addr
+    BYTES 0x58, 1
+    BYTES 0x0189, 2
 .r:
     pop ebx
     pop esi
@@ -2251,6 +2409,8 @@ expr_safe:
     je .yes
     cmp edx, VK_VAR
     je .var
+    cmp edx, VK_ELEM
+    je .elem
     cmp edx, VK_EXPR
     jne .no
     movzx edx, byte [eax + V_NEG]
@@ -2293,6 +2453,26 @@ expr_safe:
     mov eax, 1
     ret
 .no:
+    xor eax, eax
+    ret
+.elem:
+    push eax
+    mov edx, [eax + V_DATA]
+    shl edx, 5
+    add edx, [g_vars]
+    cmp word [edx + VR_TYPE], TY_INT
+    jne .elem_no
+    mov edx, [edx + VR_ALEN]
+    mov ecx, [eax + V_DATA + 4]
+    call idx_proven
+    test eax, eax
+    js .elem_no
+    pop eax
+    mov dword [cg_bldata], 1
+    mov ecx, [eax + V_DATA + 4]
+    jmp expr_safe
+.elem_no:
+    pop eax
     xor eax, eax
     ret
 
@@ -2583,6 +2763,450 @@ try_branchless:
     pop ebx
     pop esi
     ret
+
+elem_addr:
+    push esi
+    push ebx
+    push ebp
+    mov eax, ecx
+    shl eax, 5
+    add eax, [g_vars]
+    mov ebx, eax
+    push edx
+    movzx ecx, word [ebx + VR_TYPE]
+    call elem_size
+    mov esi, eax
+    mov eax, [ebx + VR_OFF]
+    add eax, [cg_vars]
+    mov ebp, eax
+    pop ecx
+    push ecx
+    call node_addr
+    pop ecx
+    cmp byte [eax + V_KIND], VK_INT
+    jne .dyn
+    mov edx, [eax + V_DATA]
+    dec edx
+    imul edx, esi
+    add edx, ebp
+    BYTES 0xB9, 1
+    call x86_imm32
+    jmp .r
+.dyn:
+    push ecx
+    mov edx, [ebx + VR_ALEN]
+    call idx_proven
+    pop ecx
+    test eax, eax
+    jns .proven
+    call emit_expr
+    BYTES 0xFF488D, 3
+    BYTES 0xF981, 2
+    mov edx, [ebx + VR_ALEN]
+    call x86_imm32
+    BYTES 0x0A72, 2
+    BYTES 0xBA, 1
+    mov edx, [cg_line]
+    call x86_imm32
+    CALL_RT RT_FN_INDEX
+    cmp esi, 4
+    je .s4
+    cmp esi, 1
+    je .s1
+    BYTES 0x04E1C1, 3
+.s1:
+    BYTES 0xC181, 2
+    mov edx, ebp
+    call x86_imm32
+    jmp .r
+.s4:
+    BYTES 0x8D0C8D, 3
+    mov edx, ebp
+    call x86_imm32
+    jmp .r
+.proven:
+    mov edx, [ix_c]
+    dec edx
+    imul edx, esi
+    add ebp, edx
+    cmp esi, 16
+    je .pv16
+    shl eax, 3
+    or eax, 5
+    cmp esi, 4
+    jne .pv_sib
+    or eax, 0x80
+.pv_sib:
+    shl eax, 16
+    or eax, 0x0C8D
+    mov ecx, 3
+    call x86_bytes
+    mov edx, ebp
+    call x86_imm32
+    jmp .r
+.pv16:
+    mov ecx, eax
+    mov edx, R_ECX
+    mov eax, 0x89
+    call e_rr
+    BYTES 0x04E1C1, 3
+    jmp .s1
+.r:
+    pop ebp
+    pop ebx
+    pop esi
+    ret
+
+idx_proven:
+    push esi
+    push ebx
+    mov esi, edx
+    call node_addr
+    cmp byte [eax + V_KIND], VK_EXPR
+    jne .no
+    cmp byte [eax + V_NEG], OP_ADD
+    jne .no
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    push edx
+    push ecx
+    call node_addr
+    pop ecx
+    pop edx
+    cmp byte [eax + V_KIND], VK_INT
+    jne .right
+    mov ebx, [eax + V_DATA]
+    mov ecx, edx
+    jmp .check
+.right:
+    push ecx
+    mov ecx, edx
+    call node_addr
+    pop ecx
+    cmp byte [eax + V_KIND], VK_INT
+    jne .no
+    mov ebx, [eax + V_DATA]
+.check:
+    cmp ebx, 1
+    jl .no
+    call node_addr
+    cmp byte [eax + V_KIND], VK_VAR
+    jne .no
+    mov ecx, [eax + V_DATA]
+    mov eax, [cg_vreg]
+    test byte [eax + ecx], 0x40
+    jz .no
+    mov edx, [cg_bdepth]
+.find:
+    test edx, edx
+    jz .no
+    dec edx
+    imul eax, edx, B_SIZE
+    lea eax, [cg_bstack + eax]
+    cmp dword [eax + B_KIND], BK_FOR
+    jne .find
+    cmp [eax + B_ALIAS], ecx
+    jne .find
+    cmp dword [eax + B_DYN], 0
+    jne .no
+    mov eax, [eax + B_LIMIT]
+    dec eax
+    add eax, ebx
+    cmp eax, esi
+    jg .no
+    mov [ix_c], ebx
+    call var_reg
+    jmp .r
+.no:
+    mov eax, -1
+.r:
+    pop ebx
+    pop esi
+    ret
+
+load_value:
+    push esi
+    push ebx
+    mov ebx, ecx
+    mov esi, edx
+    call node_addr
+    movzx edx, byte [eax + V_KIND]
+    cmp esi, TY_INT
+    jne .not_int
+    mov ecx, ebx
+    call emit_expr
+    jmp .r
+.not_int:
+    cmp edx, VK_ELEM
+    jne .not_elem
+    mov ecx, [eax + V_DATA]
+    mov edx, [eax + V_DATA + 4]
+    call elem_addr
+    cmp esi, TY_BOOL
+    jne .elem_str
+    BYTES 0x01B60F, 3
+    jmp .r
+.elem_str:
+    BYTES 0x0851B70F, 4
+    BYTES 0x018B, 2
+    jmp .r
+.not_elem:
+    cmp edx, VK_VAR
+    jne .not_var
+    call var_abs
+    mov ebx, eax
+    cmp esi, TY_BOOL
+    jne .var_str
+    OPA 0x05B60F, 3, ebx
+    jmp .r
+.var_str:
+    OPA 0xA1, 1, ebx
+    lea edx, [ebx + 8]
+    OPA 0x15B70F, 3, edx
+    jmp .r
+.not_var:
+    cmp esi, TY_BOOL
+    jne .str_const
+    mov ebx, [eax + V_DATA]
+    BYTES 0xB8, 1
+    mov edx, ebx
+    call x86_imm32
+    jmp .r
+.str_const:
+    cmp edx, VK_STR
+    jne .null
+    mov esi, [eax + V_DATA_HI]
+    mov ebx, [eax + V_DATA]
+    add ebx, [cg_pool]
+    BYTES 0xB8, 1
+    mov edx, ebx
+    call x86_imm32
+    BYTES 0xBA, 1
+    mov edx, esi
+    call x86_imm32
+    jmp .r
+.null:
+    BYTES 0xD231C031, 4
+.r:
+    pop ebx
+    pop esi
+    ret
+
+store_at_ecx:
+    cmp edx, TY_INT
+    jne .not_int
+    BYTES 0x0189, 2
+    ret
+.not_int:
+    cmp edx, TY_BOOL
+    jne .str
+    BYTES 0x0188, 2
+    ret
+.str:
+    BYTES 0x0189, 2
+    BYTES 0x08518966, 4
+    ret
+
+is_default:
+    call node_addr
+    movzx edx, byte [eax + V_KIND]
+    cmp edx, VK_NULL
+    je .yes
+    cmp edx, VK_INT
+    je .num
+    cmp edx, VK_BOOL
+    jne .no
+.num:
+    cmp dword [eax + V_DATA], 0
+    je .yes
+.no:
+    xor eax, eax
+    ret
+.yes:
+    mov eax, 1
+    ret
+
+emit_aset:
+    push esi
+    push ebx
+    push ebp
+    mov esi, [cg_cur]
+    mov eax, [esi + S_PARTS]
+    mov edx, [g_roots]
+    mov ebx, [edx + eax * 4 + 4]
+    mov edx, [edx + eax * 4]
+    movzx ebp, word [esi + S_MODE]
+    mov ecx, [esi + S_VAR]
+    call elem_addr
+    cmp dword [esi + S_NPARTS], 2
+    jb .zero
+    mov ecx, ebx
+    call node_addr
+    movzx eax, byte [eax + V_KIND]
+    cmp eax, VK_EXPR
+    je .saved
+    cmp eax, VK_ELEM
+    je .saved
+    mov ecx, ebx
+    mov edx, ebp
+    call load_value
+    jmp .store
+.saved:
+    BYTES 0x51, 1
+    mov ecx, ebx
+    mov edx, ebp
+    call load_value
+    BYTES 0x59, 1
+.store:
+    mov edx, ebp
+    call store_at_ecx
+    jmp .r
+.zero:
+    cmp ebp, TY_INT
+    jne .zero_not_int
+    BYTES 0x01C7, 2
+    xor edx, edx
+    call x86_imm32
+    jmp .r
+.zero_not_int:
+    cmp ebp, TY_BOOL
+    jne .zero_str
+    BYTES 0x0001C6, 3
+    jmp .r
+.zero_str:
+    BYTES 0x01C7, 2
+    xor edx, edx
+    call x86_imm32
+    BYTES 0x0841C766, 4
+    xor edx, edx
+    call x86_imm16
+.r:
+    pop ebp
+    pop ebx
+    pop esi
+    ret
+
+emit_adecl:
+    push esi
+    push ebx
+    push ebp
+    mov esi, [cg_cur]
+    mov eax, [esi + S_VAR]
+    shl eax, 5
+    add eax, [g_vars]
+    movzx ecx, word [eax + VR_TYPE]
+    mov [ad_type], ecx
+    call elem_size
+    mov [ad_size], eax
+    mov eax, [esi + S_VAR]
+    call var_abs_idx
+    mov ebp, eax
+    cmp dword [esi + S_PIECES], 0
+    jne .fill_value
+    cmp dword [esi + S_NPIECES], 0
+    je .values
+    BYTES 0xD231C031, 4
+    call .fill_loop
+    jmp .values
+.fill_value:
+    mov eax, [esi + S_PARTS]
+    mov edx, [g_roots]
+    mov ebx, [edx + eax * 4]
+    cmp dword [esi + S_NPIECES], 0
+    jne .fill_emit
+    mov ecx, ebx
+    call is_default
+    test eax, eax
+    jnz .done
+.fill_emit:
+    mov ecx, ebx
+    mov edx, [ad_type]
+    call load_value
+    call .fill_loop
+    jmp .done
+.values:
+    xor ebx, ebx
+.v_loop:
+    cmp ebx, [esi + S_NPARTS]
+    jae .done
+    mov eax, [esi + S_PARTS]
+    add eax, ebx
+    mov edx, [g_roots]
+    mov ecx, [edx + eax * 4]
+    push ecx
+    cmp dword [esi + S_NPIECES], 0
+    jne .v_emit
+    call is_default
+    test eax, eax
+    jnz .v_next
+.v_emit:
+    mov ecx, [esp]
+    call node_addr
+    mov edx, ebx
+    imul edx, [ad_size]
+    add edx, ebp
+    movzx ecx, byte [eax + V_KIND]
+    cmp ecx, VK_INT
+    je .v_int
+    cmp ecx, VK_BOOL
+    je .v_bool
+    mov ecx, [esp]
+    mov edx, [ad_type]
+    call load_value
+    push edx
+    BYTES 0xB9, 1
+    mov edx, ebx
+    imul edx, [ad_size]
+    add edx, ebp
+    call x86_imm32
+    pop edx
+    mov edx, [ad_type]
+    call store_at_ecx
+    jmp .v_next
+.v_int:
+    push dword [eax + V_DATA]
+    OPA 0x05C7, 2, edx
+    pop edx
+    call x86_imm32
+    jmp .v_next
+.v_bool:
+    push dword [eax + V_DATA]
+    OPA 0x05C6, 2, edx
+    pop edx
+    call x86_imm8
+.v_next:
+    pop ecx
+    inc ebx
+    jmp .v_loop
+.done:
+    pop ebp
+    pop ebx
+    pop esi
+    ret
+.fill_loop:
+    BYTES 0xB9, 1
+    mov edx, ebp
+    call x86_imm32
+    mov edx, [ad_type]
+    call store_at_ecx
+    BYTES 0xC183, 2
+    mov edx, [ad_size]
+    call x86_imm8
+    BYTES 0xF981, 2
+    mov eax, [esi + S_VAR]
+    shl eax, 5
+    add eax, [g_vars]
+    mov edx, [eax + VR_ALEN]
+    imul edx, [ad_size]
+    add edx, ebp
+    call x86_imm32
+    BYTES 0x72, 1
+    mov edx, -13
+    cmp dword [ad_type], TY_STR
+    jne .fl_rel
+    mov edx, -17
+.fl_rel:
+    jmp x86_imm8
 
 section .rdata
 temp_codes db 5, 7, 6

@@ -187,6 +187,12 @@ XFUNC lex
     mov ecx, TK_COLON
     cmp al, ':'
     je .single
+    mov ecx, TK_LBRACK
+    cmp al, 91
+    je .single
+    mov ecx, TK_RBRACK
+    cmp al, 93
+    je .single
     cmp al, '!'
     je .bang
     mov ecx, TK_LT
