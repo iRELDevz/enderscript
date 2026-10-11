@@ -108,7 +108,7 @@ Run it with `ender run main.es`. Output:
 ```
 halo Ender, umur 17
 dewasa
-jumlah 10
+jumlah 15
 ```
 
 ## Syntax
@@ -226,7 +226,7 @@ loops(3):
   print>>"ulang"
 ```
 
-- `for v in range(n):` runs the block with `v` = 0, 1, up to n-1. At the top level, `v` is created as an `int` automatically.
+- `for v in range(n):` runs the block with `v` = 1, 2, up to n. When the loop finishes, `v` holds n. At the top level, `v` is created as an `int` automatically.
 - `loops(n):` runs the block n times without a variable.
 - `n` is evaluated once at the start. If n ≤ 0, the block does not run.
 - Loops and `if` can be nested.
@@ -312,7 +312,7 @@ print>>"jumlah elemen: "{nilai.len}
 nilai[4] = 40
 total.int = 0
 for i in range(nilai.len):
-  total = total + nilai[i + 1]
+  total = total + nilai[i]
 print>>"total "{total}
 nama[3] = input>>"Nama ketiga? "
 print>>nama[3]
@@ -327,7 +327,7 @@ print>>nama[3]
 - `name.len` is the number of elements. It is known at compile time.
 - An index written as a number is checked by the compiler, for example `index 6 is outside 1..5 of array 'nilai'`. An index computed while the program runs is checked at run time. If it is out of range, the program prints `runtime error: array index out of range on line N` to stderr and exits with code 1.
 - Arrays are declared at the top level, not inside `if` or a loop. Declaring the same array again with the same type and size gives a warning and resets every element.
-- Inside a `for` loop, an index such as `i + 1` that the compiler can prove is in range is used without the run-time check.
+- Inside a `for` loop, an index such as `i` that the compiler can prove is in range is used without the run-time check.
 
 ### General rules
 
@@ -462,7 +462,7 @@ Lalu jalankan dengan `ender run main.es`. Outputnya:
 ```
 halo Ender, umur 17
 dewasa
-jumlah 10
+jumlah 15
 ```
 
 ## Sintaks
@@ -580,7 +580,7 @@ loops(3):
   print>>"ulang"
 ```
 
-- `for v in range(n):` menjalankan blok dengan `v` = 0, 1, sampai n-1. Di tingkat atas, `v` otomatis dibuat sebagai `int`.
+- `for v in range(n):` menjalankan blok dengan `v` = 1, 2, sampai n. Setelah loop selesai, `v` berisi n. Di tingkat atas, `v` otomatis dibuat sebagai `int`.
 - `loops(n):` menjalankan blok n kali tanpa variabel.
 - `n` dihitung sekali di awal. Kalau n ≤ 0, blok tidak dijalankan.
 - Loop dan `if` boleh bersarang.
@@ -666,7 +666,7 @@ print>>"jumlah elemen: "{nilai.len}
 nilai[4] = 40
 total.int = 0
 for i in range(nilai.len):
-  total = total + nilai[i + 1]
+  total = total + nilai[i]
 print>>"total "{total}
 nama[3] = input>>"Nama ketiga? "
 print>>nama[3]
@@ -681,7 +681,7 @@ print>>nama[3]
 - `nama.len` adalah jumlah elemen. Nilainya sudah diketahui saat compile.
 - Index yang ditulis sebagai angka dicek oleh compiler, misalnya `index 6 is outside 1..5 of array 'nilai'`. Index yang dihitung saat program jalan dicek saat program jalan. Kalau di luar batas, program mencetak `runtime error: array index out of range on line N` ke stderr lalu keluar dengan exit code 1.
 - Array dideklarasikan di tingkat atas, tidak di dalam `if` atau loop. Deklarasi ulang array yang sama dengan tipe dan ukuran sama memberi warning dan mengosongkan semua elemen.
-- Di dalam loop `for`, index seperti `i + 1` yang bisa dibuktikan compiler masih dalam batas dipakai tanpa pengecekan saat program jalan.
+- Di dalam loop `for`, index seperti `i` yang bisa dibuktikan compiler masih dalam batas dipakai tanpa pengecekan saat program jalan.
 
 ### Aturan umum
 
@@ -816,7 +816,7 @@ print>>"jumlah "{jumlah}
 ```
 halo Ender, umur 17
 dewasa
-jumlah 10
+jumlah 15
 ```
 
 ## 構文
@@ -934,7 +934,7 @@ loops(3):
   print>>"ulang"
 ```
 
-- `for v in range(n):` は `v` = 0、1、…、n-1 でブロックを実行します。トップレベルでは `v` は自動的に `int` として作成されます。
+- `for v in range(n):` は `v` = 1、2、…、n でブロックを実行します。ループが終わると `v` は n になります。トップレベルでは `v` は自動的に `int` として作成されます。
 - `loops(n):` は変数なしでブロックを n 回実行します。
 - `n` は最初に 1 回だけ評価されます。n ≤ 0 の場合、ブロックは実行されません。
 - ループと `if` は入れ子にできます。
@@ -1020,7 +1020,7 @@ print>>"jumlah elemen: "{nilai.len}
 nilai[4] = 40
 total.int = 0
 for i in range(nilai.len):
-  total = total + nilai[i + 1]
+  total = total + nilai[i]
 print>>"total "{total}
 nama[3] = input>>"Nama ketiga? "
 print>>nama[3]
@@ -1035,7 +1035,7 @@ print>>nama[3]
 - `名前.len` は要素数です。コンパイル時に決まります。
 - 数値で書いた index はコンパイラが検査します。例: `index 6 is outside 1..5 of array 'nilai'`。実行中に計算される index は実行時に検査され、範囲外なら `runtime error: array index out of range on line N` を stderr に出して終了コード 1 で終了します。
 - 配列はトップレベルで宣言します。`if` やループの中では宣言できません。同じ型と同じサイズで同じ配列を再宣言すると warning が出て、すべての要素がリセットされます。
-- `for` ループの中で `i + 1` のように範囲内だとコンパイラが証明できる index は、実行時の検査なしで使われます。
+- `for` ループの中で `i` のように範囲内だとコンパイラが証明できる index は、実行時の検査なしで使われます。
 
 ### 一般的なルール
 
@@ -1170,7 +1170,7 @@ print>>"jumlah "{jumlah}
 ```
 halo Ender, umur 17
 dewasa
-jumlah 10
+jumlah 15
 ```
 
 ## 语法
@@ -1288,7 +1288,7 @@ loops(3):
   print>>"ulang"
 ```
 
-- `for v in range(n):` 以 `v` = 0、1、…、n-1 运行代码块。在顶层，`v` 会自动创建为 `int`。
+- `for v in range(n):` 以 `v` = 1、2、…、n 运行代码块。循环结束后，`v` 的值为 n。在顶层，`v` 会自动创建为 `int`。
 - `loops(n):` 不使用变量，运行代码块 n 次。
 - `n` 只在开始时计算一次。如果 n ≤ 0，代码块不会运行。
 - 循环和 `if` 可以嵌套。
@@ -1374,7 +1374,7 @@ print>>"jumlah elemen: "{nilai.len}
 nilai[4] = 40
 total.int = 0
 for i in range(nilai.len):
-  total = total + nilai[i + 1]
+  total = total + nilai[i]
 print>>"total "{total}
 nama[3] = input>>"Nama ketiga? "
 print>>nama[3]
@@ -1389,7 +1389,7 @@ print>>nama[3]
 - `名称.len` 是元素个数，在编译时就已确定。
 - 写成数字的 index 由编译器检查，例如 `index 6 is outside 1..5 of array 'nilai'`。运行时计算的 index 在运行时检查，越界时程序向 stderr 输出 `runtime error: array index out of range on line N` 并以退出码 1 结束。
 - 数组在顶层声明，不能在 `if` 或循环内声明。用相同类型和大小再次声明同一个数组会给出 warning，并重置所有元素。
-- 在 `for` 循环中，编译器能证明在范围内的 index (例如 `i + 1`) 不做运行时检查。
+- 在 `for` 循环中，编译器能证明在范围内的 index (例如 `i`) 不做运行时检查。
 
 ### 通用规则
 
@@ -1524,7 +1524,7 @@ print>>"jumlah "{jumlah}
 ```
 halo Ender, umur 17
 dewasa
-jumlah 10
+jumlah 15
 ```
 
 ## सिंटैक्स
@@ -1642,7 +1642,7 @@ loops(3):
   print>>"ulang"
 ```
 
-- `for v in range(n):` ब्लॉक को `v` = 0, 1, …, n-1 के साथ चलाता है। शीर्ष स्तर पर `v` अपने-आप `int` के रूप में बन जाता है।
+- `for v in range(n):` ब्लॉक को `v` = 1, 2, …, n के साथ चलाता है। लूप पूरा होने पर `v` का मान n होता है। शीर्ष स्तर पर `v` अपने-आप `int` के रूप में बन जाता है।
 - `loops(n):` बिना वेरिएबल के ब्लॉक को n बार चलाता है।
 - `n` की गणना शुरुआत में एक बार होती है। अगर n ≤ 0 है, तो ब्लॉक नहीं चलता।
 - लूप और `if` एक-दूसरे के अंदर रखे जा सकते हैं।
@@ -1728,7 +1728,7 @@ print>>"jumlah elemen: "{nilai.len}
 nilai[4] = 40
 total.int = 0
 for i in range(nilai.len):
-  total = total + nilai[i + 1]
+  total = total + nilai[i]
 print>>"total "{total}
 nama[3] = input>>"Nama ketiga? "
 print>>nama[3]
@@ -1743,7 +1743,7 @@ print>>nama[3]
 - `नाम.len` एलिमेंट की संख्या है। यह कंपाइल के समय ही तय होती है।
 - संख्या के रूप में लिखा index कंपाइलर जाँचता है, जैसे `index 6 is outside 1..5 of array 'nilai'`। प्रोग्राम चलते समय निकाला गया index चलते समय जाँचा जाता है। सीमा से बाहर होने पर प्रोग्राम stderr पर `runtime error: array index out of range on line N` छापता है और exit code 1 के साथ बंद होता है।
 - ऐरे सबसे ऊपरी स्तर पर घोषित होते हैं, `if` या लूप के अंदर नहीं। उसी टाइप और साइज़ के साथ वही ऐरे दोबारा घोषित करने पर warning मिलती है और सारे एलिमेंट रीसेट हो जाते हैं।
-- `for` लूप के अंदर `i + 1` जैसा index, जिसे कंपाइलर सीमा के अंदर साबित कर सके, बिना रनटाइम जाँच के इस्तेमाल होता है।
+- `for` लूप के अंदर `i` जैसा index, जिसे कंपाइलर सीमा के अंदर साबित कर सके, बिना रनटाइम जाँच के इस्तेमाल होता है।
 
 ### सामान्य नियम
 

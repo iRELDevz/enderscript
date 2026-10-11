@@ -105,7 +105,7 @@ for _ in range(rng.randint(2, 5)):
     for _ in range(2 if nested else 1):
         for it in range(n):
             if use_for:
-                env["i"] = it
+                env["i"] = it + 1
             env["x"] = wrap(wrap(env["x"] * a) + b)
             for _, _, f in body:
                 f(env)

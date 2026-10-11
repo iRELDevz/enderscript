@@ -219,7 +219,7 @@ def run(items, e, out):
         elif k == "cont":
             raise Cont(it[2])
         elif k == "for":
-            for c in range(it[3]):
+            for c in range(1, it[3] + 1):
                 e[it[2]] = c
                 if run_body(it[4], e, out, it[5]):
                     break

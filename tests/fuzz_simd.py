@@ -71,7 +71,7 @@ for _ in range(rng.randint(3, 8)):
         lines.append("%s  %s" % (ind, stmt))
         cond = lambda i: True
     for _ in range(2 if nested else 1):
-        for i in range(n):
+        for i in range(1, n + 1):
             env["i"] = i
             if cond(i):
                 env[t] = wrap(env[t] + tf(env, i))

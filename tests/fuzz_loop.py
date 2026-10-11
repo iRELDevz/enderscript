@@ -292,7 +292,7 @@ def run(items, e, out):
                         run(it[4], e, out)
         elif it[0] == "for":
             n = it[3](e)
-            for c in range(n):
+            for c in range(1, n + 1):
                 e[it[2]] = c
                 if body_run(it[4], e, out, it[5]):
                     break

@@ -8,7 +8,7 @@ nilai[5] = nilai[1] + nilai[2]
 print>>"a "{nilai[2]}" b "{nilai[5]}
 s.int = 0
 for i in range(nilai.len):
-  s = s + nilai[i + 1]
+  s = s + nilai[i]
 print>>"jumlah = "{s}
 aktif.bool[4] = true
 print>>aktif[1]
