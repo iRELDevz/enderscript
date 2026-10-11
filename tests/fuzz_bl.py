@@ -145,7 +145,7 @@ out = []
 def run(items):
     for it in items:
         if it[0] == "for":
-            for x in range(it[3]):
+            for x in range(1, it[3] + 1):
                 env[it[2]] = x
                 run(it[4])
         elif it[0] == "if":

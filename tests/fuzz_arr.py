@@ -87,7 +87,9 @@ def index(name):
         return str(c), lambda e, c=c: c
     if r < 0.65 and fors:
         f = rng.choice(fors)
-        c = rng.randint(1, n - f[2] + 1)
+        c = rng.randint(0, n - f[2])
+        if c == 0:
+            return f[1], lambda e, v=f[1]: e[v]
         return "%s + %d" % (f[1], c), lambda e, v=f[1], c=c: e[v] + c
     v = rng.choice(SCAL + [f[1] for f in CTX])
     return "(%s %% %d + %d) %% %d + 1" % (v, n, n, n), lambda e, v=v: tmod(tmod(e[v], n) + n, n) + 1
@@ -252,7 +254,7 @@ def run(items, e, out):
             elif it[4]:
                 run(it[4], e, out)
         elif k == "for":
-            for c in range(it[3]):
+            for c in range(1, it[3] + 1):
                 e[it[2]] = c
                 run(it[4], e, out)
         elif k == "loops":

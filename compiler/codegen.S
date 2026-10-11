@@ -2002,13 +2002,14 @@ emit_loop_head:
     WORD 0xB9000140
 11: cmp w22, #NOREG
     b.eq 12f
-    MOV32 w0, 0x2A1F03E0
+    MOV32 w0, 0x52800020
     orr w0, w0, w22
     bl e_word
     b 13f
 12: ldr w0, [x20, #B_SLOT]
     bl emit_slot_addr
-    WORD 0xB900015F
+    WORD 0x52800029
+    WORD 0xB9000149
 13: ldr w9, [x20, #B_DYN]
     cbnz w9, 14f
     ldr w9, [x20, #B_LIMIT]
@@ -2113,7 +2114,7 @@ emit_loop_tail:
 6:  MOV32 w0, 0x6B0B001F
     orr w0, w0, w22, lsl #5
     bl e_word
-    mov w0, #11
+    mov w0, #13
     ldr w1, [x20, #B_TOP]
     bl emit_rel_back
     b .Llt_done
@@ -2489,8 +2490,12 @@ cg_elem_size:
 idx_proven:
     ENTER
     mov w19, w1
+    mov w23, w0
+    mov w22, #0
     bl cg_node_addr
     ldrb w9, [x0, #V_KIND]
+    cmp w9, #VK_VAR
+    b.eq 2f
     cmp w9, #VK_EXPR
     b.ne .Lip_no
     ldrb w9, [x0, #V_NEG]
@@ -2513,7 +2518,7 @@ idx_proven:
     b.ne .Lip_no
     ldr w22, [x0, #V_DATA]
     mov w23, w20
-2:  cmp w22, #1
+2:  cmp w22, #0
     b.lt .Lip_no
     mov w0, w23
     bl cg_node_addr
@@ -2539,7 +2544,6 @@ idx_proven:
     ldr w13, [x12, #B_DYN]
     cbnz w13, .Lip_no
     ldr w13, [x12, #B_LIMIT]
-    sub w13, w13, #1
     add w13, w13, w22
     cmp w13, w19
     b.gt .Lip_no
