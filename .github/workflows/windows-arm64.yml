@@ -45,6 +45,15 @@ jobs:
           ./ender.exe build divzero.es
           ./divzero.exe
           if ($LASTEXITCODE -ne 1) { exit 1 } else { exit 0 }
+      - name: Runtime array index
+        shell: pwsh
+        run: |
+          Set-Content -Path badidx.es -Value "a.int[3] = 1, 2, 3`ni.int = 4`nprint>>a[i]`n" -NoNewline
+          ./ender.exe build badidx.es
+          ./badidx.exe 2> err.txt
+          if ($LASTEXITCODE -ne 1) { exit 1 }
+          if (-not (Select-String -Path err.txt -Pattern 'array index out of range on line 3' -Quiet)) { exit 1 }
+          exit 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
