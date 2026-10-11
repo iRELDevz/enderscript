@@ -43,6 +43,16 @@ jobs:
           set +e
           ./divzero
           test $? -eq 1
+      - name: Runtime array index
+        run: |
+          printf 'a.int[3] = 1, 2, 3\ni.int = 4\nprint>>a[i]\n' > badidx.es
+          ./ender build badidx.es
+          set +e
+          ./badidx 2> err.txt
+          code=$?
+          set -e
+          test $code -eq 1
+          grep -q "array index out of range on line 3" err.txt
       - name: Fuzz arithmetic
         run: for s in $(seq 1 20); do python3 tests/fuzz_expr.py ./ender $s 400 || exit 1; done
       - name: Fuzz language
