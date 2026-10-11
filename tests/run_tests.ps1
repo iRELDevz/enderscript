@@ -85,7 +85,7 @@ function Read-Expect([string]$Path) {
 foreach ($f in Get-Cases 'check\ok' '*.es') {
     $name = $f.BaseName
     if (-not (Test-Selected $name)) { continue }
-    $r = Invoke-Native $compiler @('check', $f.Name) $f.DirectoryName
+    $r = Invoke-Native $compiler @('examine', $f.Name) $f.DirectoryName
     $err = (Normalize-Text $r.Stderr).Trim()
     $ok = ($r.ExitCode -eq 0 -and $err -eq '')
     Write-Result ('check\ok\' + $name) $ok @(
@@ -99,7 +99,7 @@ foreach ($f in Get-Cases 'check\err' '*.es') {
     if (-not (Test-Selected $name)) { continue }
     $label = 'check\err\' + $name
     $expectText = Read-Expect (Join-Path $f.DirectoryName ($name + '.expect'))
-    $r = Invoke-Native $compiler @('check', $f.Name) $f.DirectoryName
+    $r = Invoke-Native $compiler @('examine', $f.Name) $f.DirectoryName
     if ($null -eq $expectText) {
         Write-Result $label $false @('missing ' + $name + '.expect')
         continue
@@ -118,7 +118,7 @@ foreach ($f in Get-Cases 'check\warn' '*.es') {
     if (-not (Test-Selected $name)) { continue }
     $label = 'check\warn\' + $name
     $expectText = Read-Expect (Join-Path $f.DirectoryName ($name + '.expect'))
-    $r = Invoke-Native $compiler @('check', $f.Name) $f.DirectoryName
+    $r = Invoke-Native $compiler @('examine', $f.Name) $f.DirectoryName
     if ($null -eq $expectText) {
         Write-Result $label $false @('missing ' + $name + '.expect')
         continue
@@ -144,7 +144,7 @@ foreach ($f in $runCases) {
     if (-not (Test-Selected $name)) { continue }
     $label = 'run\' + $name
     $exe = Join-Path $PSScriptRoot ('out\' + $name + '.exe')
-    $b = Invoke-Native $compiler @('build', $f.Name, '-o', $exe) $f.DirectoryName
+    $b = Invoke-Native $compiler @('examine', $f.Name) $f.DirectoryName
     if ($b.ExitCode -ne 0) {
         Write-Result $label $false @(
             ('expected: build exit 0'),
@@ -160,7 +160,7 @@ foreach ($f in $runCases) {
     $inPath = Join-Path $f.DirectoryName ($name + '.in')
     $inText = $null
     if (Test-Path -LiteralPath $inPath) { $inText = [System.IO.File]::ReadAllText($inPath) }
-    $r = Invoke-Native $exe @() $f.DirectoryName $inText
+    $r = Invoke-Native $compiler @($f.Name) $f.DirectoryName $inText
     $expected = Normalize-Text $expectedOut
     $actual = Normalize-Text $r.Stdout
     $ok = ($r.ExitCode -eq 0 -and $actual -eq $expected)

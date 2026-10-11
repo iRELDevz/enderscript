@@ -341,11 +341,11 @@ if len(expected) > 200000:
 src = os.path.join(work, "a%d.es" % seed)
 open(src, "w", newline="\n").write("\n".join(lines) + "\n")
 exe = os.path.join(work, "a%d.exe" % seed)
-r = subprocess.run([ender, "build", src, "-o", exe], capture_output=True)
+r = subprocess.run([ender, "examine", src], capture_output=True)
 if r.returncode:
     print("BUILD FAILED seed", seed, r.stderr.decode(errors="replace")[:400])
     sys.exit(1)
-p = subprocess.run([exe], capture_output=True)
+p = subprocess.run([ender, src], cwd=work, capture_output=True)
 got = p.stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
 bad = got != expected or p.returncode != code
 if code and not bad:

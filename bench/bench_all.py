@@ -70,7 +70,7 @@ def builder(lang, prog):
     out = os.path.join(work, "%s_%s%s" % (prog, lang, exe))
     src = os.path.join(work, prog + "." + {"es": "es", "c": "c", "cpp": "cpp", "rust": "rs"}[lang])
     if lang == "es":
-        return [ender, "build", src, "-o", out], out
+        return [ender, "examine", src], os.path.join(work, ".ender", prog + exe)
     if lang == "c":
         return ["gcc", "-O2", "-s", "-o", out, src], out
     if lang == "cpp":
@@ -95,6 +95,7 @@ for lang in langs:
                 cmd, out = builder(lang, prog)
                 if lang == "es":
                     rec["compile_ms"] = median_ms(cmd, 5)
+                    timed([ender, cmd[2]])
                 else:
                     t, r = timed(cmd, compile_timeout)
                     if r.returncode != 0:

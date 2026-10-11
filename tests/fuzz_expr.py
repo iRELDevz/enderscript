@@ -90,11 +90,11 @@ src = os.path.join(work, "fuzz%d.es" % seed)
 with open(src, "w", newline="\n") as f:
     f.write("\n".join(lines) + "\n")
 exe = os.path.join(work, "fuzz%d%s" % (seed, exe_suffix))
-r = subprocess.run([ender, "build", src, "-o", exe], capture_output=True)
+r = subprocess.run([ender, "examine", src], capture_output=True)
 if r.returncode != 0:
     print("BUILD FAILED", r.stderr.decode(errors="replace")[:500])
     sys.exit(1)
-r = subprocess.run([exe], capture_output=True)
+r = subprocess.run([ender, src], cwd=work, capture_output=True)
 got = r.stdout.decode().replace("\r\n", "\n").split("\n")[:-1]
 bad = [(i, e, g) for i, (e, g) in enumerate(zip(expected, got)) if e != g]
 if r.returncode != 0 or len(got) != len(expected) or bad:
