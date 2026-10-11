@@ -18,6 +18,7 @@ s_latest     db ", the latest declaration claims the value", 0
 s_cannot     db "cannot assign ", 0
 s_to         db " to ", 0
 s_variable_q db " variable '", 0
+s_array_q    db " array '", 0
 s_int_lit    db "int literal ", 0
 s_outside    db " is outside -2147483648..2147483647", 0
 s_str_long   db "string is longer than 65535 bytes", 0
@@ -50,11 +51,30 @@ s_true       db "true"
 s_false      db "false"
 s_null       db "null"
 s_crlf       db 10
+s_an_int_arr db "an int array", 0
+s_a_str_arr  db "a str array", 0
+s_a_bool_arr db "a bool array", 0
+s_not_arr    db "' is not an array", 0
+s_arr_q      db "array '", 0
+s_need_idx   db "' needs an index, like ", 0
+s_idx_one    db "[1]", 0
+s_idx_type   db "array index must be int, got ", 0
+s_idx1       db "index ", 0
+s_idx2       db " is outside 1..", 0
+s_idx3       db " of array '", 0
+s_has        db "' has ", 0
+s_elems_got  db " elements, got ", 0
+s_values     db " values", 0
+s_arr_size   db "array size must be between 1 and 1048576", 0
+s_decl_with  db "' is already declared with ", 0
+s_elements   db " elements", 0
+s_arr_blk1   db "cannot declare array '", 0
 
 section .bss
 alignb 8
 last_slot resq 1
 last_hash resq 1
+ca_arr    resq 1
 sm_carry  resq 1
 sm_bdepth resq 1
 sm_bstack resq MAX_NEST + 1
@@ -612,6 +632,7 @@ XFUNC var_insert
     mov si, word [vr13]
     mov [ebx + VR_TYPE], si
     pop esi
+    mov dword [ebx + VR_ALEN], 0
     mov ecx, 4
     mov edx, 4
     cmp dword [vr13], TY_INT
@@ -649,6 +670,10 @@ XFUNC check_value
     je .expr
     cmp eax, VK_TAKE
     je .take
+    cmp eax, VK_ELEM
+    je .elem
+    cmp eax, VK_LEN
+    je .len
     mov dword [vr12], TY_BOOL
     cmp eax, VK_BOOL
     je .done
@@ -802,10 +827,64 @@ XFUNC check_value
     mov [ebx + V_DATA], eax
     shl eax, 5
     add eax, [g_vars]
+    cmp dword [eax + VR_ALEN], 0
+    je .var_scalar
+    mov ecx, [ebx + V_TOK]
+    jmp err_need_index
+.var_scalar:
     push ebx
     movzx ebx, word [eax + VR_TYPE]
     mov dword [vr12], ebx
     pop ebx
+    jmp .done
+.elem:
+    mov ecx, [ebx + V_TOK]
+    call var_lookup
+    cmp eax, -1
+    je .undefined
+    mov dword [vr13], eax
+    shl eax, 5
+    add eax, [g_vars]
+    cmp dword [eax + VR_ALEN], 0
+    jne .elem_arr
+    mov ecx, [ebx + V_TOK]
+    jmp err_not_array
+.elem_arr:
+    push ebx
+    movzx ebx, word [eax + VR_TYPE]
+    mov dword [vr12], ebx
+    pop ebx
+    mov ecx, [ebx + V_DATA + 4]
+    call node_ptr
+    mov ecx, eax
+    mov edx, dword [vr13]
+    call check_index
+    push esi
+    mov esi, dword [vr13]
+    mov [ebx + V_DATA], esi
+    pop esi
+    jmp .done
+.len:
+    mov ecx, [ebx + V_TOK]
+    call var_lookup
+    cmp eax, -1
+    je .undefined
+    shl eax, 5
+    add eax, [g_vars]
+    push ebx
+    mov ebx, [eax + VR_ALEN]
+    mov dword [vr10], ebx
+    pop ebx
+    push ebx
+    mov ebx, dword [vr10]
+    test dword [vr10], ebx
+    pop ebx
+    jnz .len_ok
+    mov ecx, [ebx + V_TOK]
+    jmp err_not_array
+.len_ok:
+    mov dword [vr12], TY_INT
+    call set_const
     jmp .done
 .undefined:
     call msg_reset
@@ -913,6 +992,10 @@ XFUNC check_assign
     mov ecx, eax
     call msg_addz
     lea ecx, [s_variable_q]
+    cmp dword [ca_arr], 0
+    je .var_word
+    lea ecx, [s_array_q]
+.var_word:
     call msg_addz
     mov ecx, dword [vr13]
     call msg_tok
@@ -1018,6 +1101,10 @@ XFUNC sema
     je .group_stmt
     cmp eax, SK_INPUT
     je .input_stmt
+    cmp eax, SK_ADECL
+    je .adecl
+    cmp eax, SK_ASET
+    je .aset
     cmp eax, SK_BREAK
     je .jump_stmt
     cmp eax, SK_CONTINUE
@@ -1040,9 +1127,41 @@ XFUNC sema
     mov ebx, [vr12]
     mov [ebx + S_VAR], eax
     pop ebx
+    mov dword [vr14], eax
     shl eax, 5
     add eax, [g_vars]
-    movzx eax, word [eax + VR_TYPE]
+    mov ebx, eax
+    push ebx
+    mov ebx, [vr12]
+    cmp dword [ebx + S_MODETOK], NO_TOKEN
+    pop ebx
+    jne .input_elem
+    cmp dword [ebx + VR_ALEN], 0
+    je .input_type
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    jmp err_need_index
+.input_elem:
+    cmp dword [ebx + VR_ALEN], 0
+    jne .input_elem_arr
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    jmp err_not_array
+.input_elem_arr:
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_MODETOK]
+    pop ebx
+    call node_ptr
+    mov ecx, eax
+    mov edx, dword [vr14]
+    call check_index
+.input_type:
+    movzx eax, word [ebx + VR_TYPE]
     cmp eax, TY_BOOL
     jne .out_parts
     call msg_reset
@@ -1109,6 +1228,8 @@ XFUNC sema
     add eax, [g_vars]
     mov ebx, eax
     movzx eax, word [ebx + VR_TYPE]
+    cmp dword [ebx + VR_ALEN], 0
+    jne .redecl_arr_type
     push ebx
     mov ebx, [vr12]
     movzx ecx, word [ebx + S_MODE]
@@ -1235,7 +1356,9 @@ XFUNC sema
     je .undeclared_in_block
     shl eax, 5
     add eax, [g_vars]
+    cmp dword [eax + VR_ALEN], 0
     movzx eax, word [eax + VR_TYPE]
+    jne .redecl_arr_type
     push ebx
     mov ebx, [vr12]
     movzx ecx, word [ebx + S_MODE]
@@ -1289,6 +1412,357 @@ XFUNC sema
     mov edx, [ebx + S_TOK]
     pop ebx
     call diag_error_tok
+
+.adecl:
+    mov dword [sm_carry], 0
+    cmp dword [sm_bdepth], 0
+    je .ad_top
+    call msg_reset
+    lea ecx, [s_arr_blk1]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_str_if2]
+    call block_is_loop
+    jne .ad_blk_msg
+    lea ecx, [s_str_loop2]
+.ad_blk_msg:
+    call msg_addz
+    lea ecx, [s_semantic]
+    push ebx
+    mov ebx, [vr12]
+    mov edx, [ebx + S_TOK]
+    pop ebx
+    call diag_error_tok
+.ad_top:
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_MODETOK]
+    pop ebx
+    call tok_text
+    push ebx
+    mov ebx, dword [vr15]
+    xor dword [vr15], ebx
+    pop ebx
+    xor ecx, ecx
+.ad_digit:
+    cmp ecx, edx
+    jae .ad_digits_done
+    push ebx
+    movzx ebx, byte [eax + ecx]
+    mov dword [vr8], ebx
+    pop ebx
+    sub dword [vr8], '0'
+    inc ecx
+    cmp dword [vr15], MAX_ALEN
+    ja .ad_digit
+    push ebx
+    imul ebx, dword [vr15], 10
+    mov dword [vr15], ebx
+    pop ebx
+    push ebx
+    mov ebx, dword [vr8]
+    add dword [vr15], ebx
+    pop ebx
+    jmp .ad_digit
+.ad_digits_done:
+    push ebx
+    mov ebx, dword [vr15]
+    test dword [vr15], ebx
+    pop ebx
+    jz .ad_bad_size
+    cmp dword [vr15], MAX_ALEN
+    jbe .ad_size_ok
+.ad_bad_size:
+    call msg_reset
+    lea ecx, [s_arr_size]
+    call msg_addz
+    lea ecx, [s_semantic]
+    push ebx
+    mov ebx, [vr12]
+    mov edx, [ebx + S_MODETOK]
+    pop ebx
+    call diag_error_tok
+.ad_size_ok:
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call var_lookup
+    mov dword [vr14], eax
+    cmp eax, -1
+    je .ad_values
+    shl eax, 5
+    add eax, [g_vars]
+    mov ebx, eax
+    movzx eax, word [ebx + VR_TYPE]
+    cmp dword [ebx + VR_ALEN], 0
+    je .redecl_type
+    push ebx
+    mov ebx, [vr12]
+    cmp ax, [ebx + S_MODE]
+    pop ebx
+    jne .redecl_arr_type
+    push esi
+    mov esi, dword [vr15]
+    cmp [ebx + VR_ALEN], esi
+    pop esi
+    jne .ad_len_diff
+    call msg_reset
+    lea ecx, [s_var_q]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_already_at]
+    call msg_addz
+    mov ecx, [ebx + VR_LINE]
+    call msg_addu
+    lea ecx, [s_latest]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call diag_warn_tok
+    push ebx
+    mov ebx, [vr12]
+    mov dword [ebx + S_NPIECES], 1
+    pop ebx
+.ad_values:
+    push ebx
+    mov ebx, [vr12]
+    mov eax, [ebx + S_NPARTS]
+    pop ebx
+    cmp eax, dword [vr15]
+    ja .ad_too_many
+    xor esi, esi
+.ad_check:
+    push ebx
+    mov ebx, [vr12]
+    cmp esi, [ebx + S_NPARTS]
+    pop ebx
+    jae .ad_store
+    push ebx
+    mov ebx, [vr12]
+    mov eax, [ebx + S_PARTS]
+    pop ebx
+    add eax, esi
+    mov edx, [g_roots]
+    mov ecx, [edx + eax * 4]
+    shl ecx, 4
+    add ecx, [g_parts]
+    push ebx
+    mov ebx, [vr12]
+    movzx edx, word [ebx + S_MODE]
+    pop ebx
+    push ebx
+    push esi
+    mov ebx, [vr12]
+    mov esi, [ebx + S_TOK]
+    mov dword [vr8], esi
+    pop esi
+    pop ebx
+    mov dword [ca_arr], 1
+    call check_assign
+    mov dword [ca_arr], 0
+    inc esi
+    jmp .ad_check
+.ad_store:
+    cmp dword [vr14], -1
+    jne .ad_known
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    push ebx
+    mov ebx, [vr12]
+    movzx edx, word [ebx + S_MODE]
+    pop ebx
+    call var_insert
+    mov dword [vr14], eax
+    shl eax, 5
+    add eax, [g_vars]
+    push ebx
+    mov ebx, dword [vr15]
+    mov [eax + VR_ALEN], ebx
+    pop ebx
+    push ebx
+    mov ebx, [vr12]
+    movzx ecx, word [ebx + S_MODE]
+    pop ebx
+    call elem_size
+    push ebx
+    mov ebx, [vr15]
+    lea edx, [ebx - 1]
+    pop ebx
+    imul edx, eax
+    add [g_vars_size], edx
+.ad_known:
+    push ebx
+    push esi
+    mov ebx, [vr12]
+    mov esi, dword [vr14]
+    mov [ebx + S_VAR], esi
+    pop esi
+    pop ebx
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call tok_line
+    mov ecx, dword [vr14]
+    shl ecx, 5
+    add ecx, [g_vars]
+    mov [ecx + VR_LINE], eax
+    jmp .next
+.ad_too_many:
+    call msg_reset
+    lea ecx, [s_arr_q]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_has]
+    call msg_addz
+    mov ecx, dword [vr15]
+    call msg_addu
+    lea ecx, [s_elems_got]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_NPARTS]
+    pop ebx
+    call msg_addu
+    lea ecx, [s_values]
+    call msg_addz
+    lea ecx, [s_semantic]
+    push ebx
+    mov ebx, [vr12]
+    mov edx, [ebx + S_TOK]
+    pop ebx
+    call diag_error_tok
+.ad_len_diff:
+    call msg_reset
+    lea ecx, [s_arr_q]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_decl_with]
+    call msg_addz
+    mov ecx, [ebx + VR_ALEN]
+    call msg_addu
+    lea ecx, [s_elements]
+    call msg_addz
+    lea ecx, [s_semantic]
+    push ebx
+    mov ebx, [vr12]
+    mov edx, [ebx + S_TOK]
+    pop ebx
+    call diag_error_tok
+
+.redecl_arr_type:
+    mov dword [vr15], eax
+    call msg_reset
+    lea ecx, [s_var_q]
+    call msg_addz
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_already_as]
+    call msg_addz
+    mov ecx, dword [vr15]
+    mov edx, 1
+    call type_desc
+    mov ecx, eax
+    call msg_addz
+    lea ecx, [s_semantic]
+    push ebx
+    mov ebx, [vr12]
+    mov edx, [ebx + S_TOK]
+    pop ebx
+    call diag_error_tok
+
+.aset:
+    mov dword [sm_carry], 0
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    call var_lookup
+    cmp eax, -1
+    je .assign
+    push ebx
+    mov ebx, [vr12]
+    mov [ebx + S_VAR], eax
+    pop ebx
+    mov dword [vr14], eax
+    shl eax, 5
+    add eax, [g_vars]
+    cmp dword [eax + VR_ALEN], 0
+    jne .aset_arr
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    jmp err_not_array
+.aset_arr:
+    movzx eax, word [eax + VR_TYPE]
+    push ebx
+    mov ebx, [vr12]
+    mov [ebx + S_MODE], ax
+    pop ebx
+    push ebx
+    mov ebx, [vr12]
+    mov eax, [ebx + S_PARTS]
+    pop ebx
+    mov edx, [g_roots]
+    mov ecx, [edx + eax * 4]
+    shl ecx, 4
+    add ecx, [g_parts]
+    mov edx, dword [vr14]
+    call check_index
+    push ebx
+    mov ebx, [vr12]
+    cmp dword [ebx + S_NPARTS], 2
+    pop ebx
+    jb .next
+    push ebx
+    mov ebx, [vr12]
+    mov eax, [ebx + S_PARTS]
+    pop ebx
+    inc eax
+    mov edx, [g_roots]
+    mov ecx, [edx + eax * 4]
+    shl ecx, 4
+    add ecx, [g_parts]
+    push ebx
+    mov ebx, [vr12]
+    movzx edx, word [ebx + S_MODE]
+    pop ebx
+    push ebx
+    push esi
+    mov ebx, [vr12]
+    mov esi, [ebx + S_TOK]
+    mov dword [vr8], esi
+    pop esi
+    pop ebx
+    mov dword [ca_arr], 1
+    call check_assign
+    mov dword [ca_arr], 0
+    jmp .next
 
 .if_stmt:
     mov dword [sm_carry], 0
@@ -1369,6 +1843,8 @@ XFUNC sema
     shl eax, 5
     add eax, [g_vars]
     movzx ecx, word [eax + VR_TYPE]
+    cmp dword [eax + VR_ALEN], 0
+    jne .bad_loop_var
     cmp ecx, TY_INT
     jne .bad_loop_var
     push ebx
@@ -1428,6 +1904,7 @@ XFUNC sema
     call diag_error_tok
 .bad_loop_var:
     mov dword [vr14], ecx
+    mov ebx, [eax + VR_ALEN]
     call msg_reset
     lea ecx, [s_lvar1]
     call msg_addz
@@ -1438,14 +1915,10 @@ XFUNC sema
     call msg_tok
     lea ecx, [s_lvar2]
     call msg_addz
-    lea ecx, [s_an_int]
-    cmp dword [vr14], TY_INT
-    je .lv_msg
-    lea ecx, [s_a_str]
-    cmp dword [vr14], TY_STR
-    je .lv_msg
-    lea ecx, [s_a_bool]
-.lv_msg:
+    mov ecx, dword [vr14]
+    mov edx, ebx
+    call type_desc
+    mov ecx, eax
     call msg_addz
     lea ecx, [s_semantic]
     push ebx
@@ -1486,6 +1959,14 @@ XFUNC sema
     pop ebx
     shl eax, 5
     add eax, [g_vars]
+    cmp dword [eax + VR_ALEN], 0
+    je .assign_scalar
+    push ebx
+    mov ebx, [vr12]
+    mov ecx, [ebx + S_TOK]
+    pop ebx
+    jmp err_need_index
+.assign_scalar:
     movzx edx, word [eax + VR_TYPE]
     push ebx
     mov ebx, [vr12]
@@ -1586,6 +2067,8 @@ XFUNC sema
     mov ecx, ebx
     call value_finish
     movzx eax, byte [ebx + V_KIND]
+    cmp eax, VK_ELEM
+    je .part_elem
     cmp eax, VK_EXPR
     je .part_expr
     cmp eax, VK_VAR
@@ -1676,6 +2159,18 @@ XFUNC sema
     shr edx, 4
     mov ecx, PK_EXPR
     call new_piece
+    jmp .part_next
+.part_elem:
+    push ebx
+    mov ebx, dword [vr15]
+    xor dword [vr15], ebx
+    pop ebx
+    mov edx, ebx
+    sub edx, [g_parts]
+    shr edx, 4
+    mov ecx, PK_ELEM
+    call new_piece
+    mov [eax + P_B], edi
 .part_next:
     inc dword [vr14]
     jmp .part
@@ -1852,6 +2347,16 @@ XFUNC pool_compact
     je .stmt_if
     push ebx
     mov ebx, [vr12]
+    cmp word [ebx + S_KIND], SK_ADECL
+    pop ebx
+    je .stmt_all
+    push ebx
+    mov ebx, [vr12]
+    cmp word [ebx + S_KIND], SK_ASET
+    pop ebx
+    je .stmt_all
+    push ebx
+    mov ebx, [vr12]
     cmp dword [ebx + S_NPARTS], 0
     pop ebx
     je .stmt_next
@@ -1878,6 +2383,34 @@ XFUNC pool_compact
     add eax, [g_parts]
     mov ecx, eax
     call intern_tree
+    jmp .stmt_next
+.stmt_all:
+    push ebx
+    mov ebx, dword [vr15]
+    xor dword [vr15], ebx
+    pop ebx
+.all_loop:
+    push ebx
+    push esi
+    mov ebx, [vr12]
+    mov esi, [ebx + S_NPARTS]
+    cmp dword [vr15], esi
+    pop esi
+    pop ebx
+    jae .stmt_next
+    push ebx
+    mov ebx, [vr12]
+    mov eax, [ebx + S_PARTS]
+    pop ebx
+    add eax, dword [vr15]
+    mov edx, [g_roots]
+    mov eax, [edx + eax * 4]
+    shl eax, 4
+    add eax, [g_parts]
+    mov ecx, eax
+    call intern_tree
+    inc dword [vr15]
+    jmp .all_loop
 .stmt_next:
     add dword [vr12], S_SIZE
     jmp .stmt
@@ -2231,6 +2764,10 @@ XFUNC check_cond
     je .done
     cmp ecx, VK_VAR
     je .done
+    cmp edi, VK_ELEM
+    je .done
+    cmp ecx, VK_ELEM
+    je .done
     cmp edi, ecx
     jne .fold_diff
     cmp edi, VK_NULL
@@ -2423,3 +2960,144 @@ block_is_loop:
     lea edx, [sm_bkind]
     cmp dword [edx + eax * 8 - 8], BK_LOOP
     ret
+
+global elem_size
+elem_size:
+    mov eax, 4
+    cmp ecx, TY_INT
+    je .r
+    mov eax, 1
+    cmp ecx, TY_BOOL
+    je .r
+    mov eax, 16
+.r:
+    ret
+
+type_desc:
+    test edx, edx
+    jnz .arr
+    lea eax, [s_an_int]
+    cmp ecx, TY_INT
+    je .r
+    lea eax, [s_a_str]
+    cmp ecx, TY_STR
+    je .r
+    lea eax, [s_a_bool]
+    ret
+.arr:
+    lea eax, [s_an_int_arr]
+    cmp ecx, TY_INT
+    je .r
+    lea eax, [s_a_str_arr]
+    cmp ecx, TY_STR
+    je .r
+    lea eax, [s_a_bool_arr]
+.r:
+    ret
+
+err_not_array:
+    mov ebx, ecx
+    call msg_reset
+    lea ecx, [s_var_q]
+    call msg_addz
+    mov ecx, ebx
+    call msg_tok
+    lea ecx, [s_not_arr]
+    call msg_addz
+    lea ecx, [s_semantic]
+    mov edx, ebx
+    call diag_error_tok
+
+err_need_index:
+    mov ebx, ecx
+    call msg_reset
+    lea ecx, [s_arr_q]
+    call msg_addz
+    mov ecx, ebx
+    call msg_tok
+    lea ecx, [s_need_idx]
+    call msg_addz
+    mov ecx, ebx
+    call msg_tok
+    lea ecx, [s_idx_one]
+    call msg_addz
+    lea ecx, [s_semantic]
+    mov edx, ebx
+    call diag_error_tok
+
+XFUNC check_index
+    mov ebx, ecx
+    mov dword [vr13], edx
+    call check_value
+    mov dword [vr12], eax
+    mov ecx, ebx
+    call value_finish
+    cmp dword [vr12], TY_INT
+    jne .bad
+    cmp byte [ebx + V_KIND], VK_INT
+    jne .ok
+    mov eax, dword [vr13]
+    shl eax, 5
+    add eax, [g_vars]
+    mov dword [vr14], eax
+    push esi
+    mov esi, [ebx + V_DATA]
+    mov dword [vr15], esi
+    pop esi
+    cmp dword [vr15], 1
+    jl .out
+    push ebx
+    mov ebx, [vr14]
+    mov eax, [ebx + VR_ALEN]
+    pop ebx
+    cmp dword [vr15], eax
+    jg .out
+.ok:
+    XENDF
+.bad:
+    call msg_reset
+    lea ecx, [s_idx_type]
+    call msg_addz
+    mov ecx, dword [vr12]
+    call type_name
+    mov ecx, eax
+    call msg_addz
+    mov ecx, ebx
+    call value_pos
+    lea ecx, [s_type]
+    call diag_error_tok
+.out:
+    call msg_reset
+    lea ecx, [s_idx1]
+    call msg_addz
+    push ebx
+    mov ebx, dword [vr15]
+    test dword [vr15], ebx
+    pop ebx
+    jns .out_pos
+    mov cl, '-'
+    call msg_addc
+    neg dword [vr15]
+.out_pos:
+    mov ecx, dword [vr15]
+    call msg_addu
+    lea ecx, [s_idx2]
+    call msg_addz
+    push ebx
+    mov ebx, [vr14]
+    mov ecx, [ebx + VR_ALEN]
+    pop ebx
+    call msg_addu
+    lea ecx, [s_idx3]
+    call msg_addz
+    push ebx
+    mov ebx, [vr14]
+    mov ecx, [ebx + VR_TOK]
+    pop ebx
+    call msg_tok
+    lea ecx, [s_quote]
+    call msg_addz
+    mov ecx, ebx
+    call value_pos
+    lea ecx, [s_semantic]
+    call diag_error_tok

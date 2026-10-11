@@ -61,6 +61,15 @@ s_exp_bname   db "expected a loop name after 'break.'", 0
 s_no_group    db "no staged loop named '", 0
 s_no_group2   db "' around this 'break'", 0
 w_takedata    db "takedata", 0
+w_len         db "len", 0
+w_all         db "all", 0
+s_exp_rbrack  db "expected ']'", 0
+s_need_size   db "expected the array size, like '[5]'", 0
+s_size_num    db "array size must be a whole number", 0
+s_exp_eq_elem db "expected '=' after ']'", 0
+s_all_one     db "'.all' needs exactly one value", 0
+s_all_scalar  db "'.all' can only be used when declaring an array", 0
+s_arr_input   db "a whole array cannot be read with input, read one element like 'a[1] = input'", 0
 
 section .bss
 alignb 4
@@ -355,6 +364,8 @@ XFUNC parse
     je .decl
     cmp eax, TK_EQ
     je .assign
+    cmp eax, TK_LBRACK
+    je .elem_stmt
     SYNERR s_exp_after_n
 .decl:
     inc dword [vr13]
@@ -382,6 +393,8 @@ XFUNC parse
     pop ebx
     inc dword [vr13]
     CUR
+    cmp eax, TK_LBRACK
+    je .array_decl
     cmp eax, TK_EQ
     je .decl_eq
     SYNERR s_exp_eq_type
@@ -417,7 +430,18 @@ XFUNC parse
     mov ebx, [vr14]
     mov dword [ebx + S_NPARTS], 1
     pop ebx
-    jmp .end_line
+    CUR
+    cmp eax, TK_DOT
+    jne .end_line
+    push ebx
+    mov ebx, [vr13]
+    lea ecx, [ebx + 1]
+    pop ebx
+    lea edx, [w_all]
+    mov dword [vr8], 3
+    call tok_word
+    jne .end_line
+    SYNERR s_all_scalar
 
 .input_value:
     push esi
@@ -433,6 +457,11 @@ XFUNC parse
 .input_fill:
     push ebx
     mov ebx, [vr14]
+    mov dword [ebx + S_MODETOK], NO_TOKEN
+    pop ebx
+.input_elem:
+    push ebx
+    mov ebx, [vr14]
     mov word [ebx + S_KIND], SK_INPUT
     pop ebx
     push ebx
@@ -443,10 +472,6 @@ XFUNC parse
     mov esi, [vr14]
     mov [esi + S_TOK], ebx
     pop esi
-    push ebx
-    mov ebx, [vr14]
-    mov dword [ebx + S_MODETOK], NO_TOKEN
-    pop ebx
     push ebx
     mov ebx, [vr14]
     mov dword [ebx + S_VAR], 0
@@ -465,6 +490,172 @@ XFUNC parse
     cmp eax, TK_SHR
     je .out_body
     jmp .end_line
+
+.array_decl:
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_KIND], SK_ADECL
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_PIECES], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPIECES], 0
+    pop ebx
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_INT
+    je .ad_size
+    cmp eax, TK_RBRACK
+    jne .ad_bad_size
+    SYNERR s_need_size
+.ad_bad_size:
+    SYNERR s_size_num
+.ad_size:
+    push ebx
+    push esi
+    mov ebx, [vr14]
+    mov esi, dword [vr13]
+    mov [ebx + S_MODETOK], esi
+    pop esi
+    pop ebx
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_RBRACK
+    je .ad_rbrack
+    SYNERR s_exp_rbrack
+.ad_rbrack:
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_EQ
+    je .ad_eq
+    SYNERR s_exp_eq_type
+.ad_eq:
+    inc dword [vr13]
+    mov eax, [g_nroots]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_PARTS], eax
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPARTS], 0
+    pop ebx
+    CUR
+    cmp eax, TK_NL
+    je .end_line
+    cmp eax, TK_EOF
+    je .end_line
+    cmp eax, TK_INPUT
+    jne .ad_value
+    SYNERR s_arr_input
+.ad_value:
+    call parse_value
+    call push_root
+    push ebx
+    mov ebx, [vr14]
+    inc dword [ebx + S_NPARTS]
+    pop ebx
+    CUR
+    cmp eax, TK_DOT
+    jne .ad_comma
+    push ebx
+    mov ebx, [vr13]
+    lea ecx, [ebx + 1]
+    pop ebx
+    lea edx, [w_all]
+    mov dword [vr8], 3
+    call tok_word
+    jne .end_line
+    push ebx
+    mov ebx, [vr14]
+    cmp dword [ebx + S_NPARTS], 1
+    pop ebx
+    je .ad_all
+    SYNERR s_all_one
+.ad_all:
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_PIECES], 1
+    pop ebx
+    add dword [vr13], 2
+    CUR
+    cmp eax, TK_COMMA
+    jne .end_line
+    SYNERR s_all_one
+.ad_comma:
+    cmp eax, TK_COMMA
+    jne .end_line
+    inc dword [vr13]
+    jmp .ad_value
+
+.elem_stmt:
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_KIND], SK_ASET
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov word [ebx + S_MODE], 0
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_PIECES], 0
+    pop ebx
+    mov eax, [g_nroots]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_PARTS], eax
+    pop ebx
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPARTS], 1
+    pop ebx
+    inc dword [vr13]
+    call parse_value
+    call push_root
+    CUR
+    cmp eax, TK_RBRACK
+    je .es_rbrack
+    SYNERR s_exp_rbrack
+.es_rbrack:
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_EQ
+    je .es_eq
+    SYNERR s_exp_eq_elem
+.es_eq:
+    inc dword [vr13]
+    CUR
+    cmp eax, TK_NL
+    je .end_line
+    cmp eax, TK_EOF
+    je .end_line
+    cmp eax, TK_INPUT
+    je .es_input
+    call parse_value
+    call push_root
+    push ebx
+    mov ebx, [vr14]
+    mov dword [ebx + S_NPARTS], 2
+    pop ebx
+    jmp .end_line
+.es_input:
+    dec dword [g_nroots]
+    mov eax, [g_nroots]
+    mov edx, [g_roots]
+    mov eax, [edx + eax * 4]
+    push ebx
+    mov ebx, [vr14]
+    mov [ebx + S_MODETOK], eax
+    pop ebx
+    push esi
+    mov esi, [vr14]
+    mov ebx, [esi + S_TOK]
+    pop esi
+    jmp .input_elem
 
 .print_stmt:
     push ebx
@@ -1695,6 +1886,11 @@ parse_primary:
     shl eax, 4
     push ebx
     mov ebx, [vr12]
+    cmp word [ebx + eax], TK_LBRACK
+    pop ebx
+    je .elem
+    push ebx
+    mov ebx, [vr12]
     cmp word [ebx + eax], TK_DOT
     pop ebx
     jne .leaf
@@ -1711,7 +1907,7 @@ parse_primary:
     mov dword [vr8], 8
     call tok_word
     mov ecx, VK_VAR
-    jne .leaf
+    jne .try_len
     push esi
     mov esi, [ps_gn]
 .take_find:
@@ -1758,6 +1954,47 @@ parse_primary:
     pop ebx
 .take_done:
     add dword [vr13], 3
+    ret
+.try_len:
+    push ebx
+    mov ebx, [vr13]
+    lea ecx, [ebx + 2]
+    pop ebx
+    lea edx, [w_len]
+    mov dword [vr8], 3
+    call tok_word
+    mov ecx, VK_VAR
+    jne .leaf
+    mov ecx, VK_LEN
+    mov edx, dword [vr13]
+    call new_node
+    add dword [vr13], 3
+    ret
+.elem:
+    mov ecx, VK_ELEM
+    mov edx, dword [vr13]
+    call new_node
+    push eax
+    add dword [vr13], 2
+    call parse_expr
+    pop ecx
+    mov dword [vr10], ecx
+    shl dword [vr10], 4
+    push ebx
+    mov ebx, [g_parts]
+    add dword [vr10], ebx
+    pop ebx
+    push ebx
+    mov ebx, [vr10]
+    mov [ebx + V_DATA + 4], eax
+    pop ebx
+    CUR
+    cmp eax, TK_RBRACK
+    je .elem_close
+    SYNERR s_exp_rbrack
+.elem_close:
+    inc dword [vr13]
+    mov eax, ecx
     ret
 
 parse_string:
