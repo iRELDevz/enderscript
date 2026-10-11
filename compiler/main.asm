@@ -16,35 +16,31 @@ section .rodata
 s_version   db "EnderScript 0.1.1 (Linux x64)", 10, 0
 s_help      db "EnderScript 0.1.1 (Linux x64)", 10, 10
             db "Usage:", 10
-            db "  ender check <file.es>            Check syntax, semantics, and types", 10
-            db "  ender check --syntax <file.es>   Check syntax only", 10
-            db "  ender build <file.es>            Build <file>", 10
-            db "  ender build <file.es> -o <out>   Build the selected output path", 10
-            db "  ender run <file.es>              Build into .ender/ and run", 10
+            db "  ender <file.es>             Build into .ender/ and run", 10
+            db "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe", 10
+            db "  ender run <file.es>         Run the program built earlier in .ender/", 10
             db "  ender --version", 10
             db "  ender --help", 10, 0
 a_version   db "--version", 0
 a_help      db "--help", 0
-a_check     db "check", 0
-a_syntax    db "--syntax", 0
-a_build     db "build", 0
+a_examine   db "examine", 0
 a_run       db "run", 0
-a_o         db "-o", 0
 s_unknown   db "unknown command '", 0
 s_unexpect  db "unexpected argument '", 0
 s_missing   db "missing input file", 0
-s_missing_o db "missing output path after -o", 0
+s_not_built db "' is not built yet, run 'ender ", 0
+s_first     db "' first", 0
+s_quote1    db "'", 0
 s_ext       db "input file must use the .es extension", 0
 s_big       db "source file is larger than 16 MB", 0
 s_cant_read db "cannot read '", 0
 s_cant_wr   db "cannot write '", 0
 s_cant_run  db "cannot run '", 0
 s_ok        db "ok ", 0
-s_built     db "built ", 0
 s_crlf      db 10, 0
 s_ender_dir db ".ender", 0
 s_ender_pre db ".ender/", 0
-s_exe       db ".exe", 0
+s_exe       db 0
 s_empty     db 0
 
 section .text
@@ -120,6 +116,49 @@ FUNC emit_and_write
 .ok:
     ENDF
 
+FUNC exe_path
+    mov r15, rcx
+    call zlen
+    lea rsi, [r15 + rax - 3]
+    mov rdi, rsi
+.base:
+    cmp rdi, r15
+    jbe .base_done
+    mov al, [rdi - 1]
+    cmp al, 92
+    je .base_done
+    cmp al, '/'
+    je .base_done
+    cmp al, ':'
+    je .base_done
+    dec rdi
+    jmp .base
+.base_done:
+    mov rcx, rdi
+    mov rdx, rsi
+    sub rdx, rdi
+    lea r8, [s_ender_pre]
+    lea r9, [s_exe]
+    call join_stem
+    ENDF
+
+check_ext:
+    push rcx
+    call zlen
+    pop rcx
+    cmp rax, 3
+    jb .bad
+    cmp byte [rcx + rax - 3], '.'
+    jne .bad
+    cmp byte [rcx + rax - 2], 'e'
+    jne .bad
+    cmp byte [rcx + rax - 1], 's'
+    jne .bad
+    ret
+.bad:
+    lea rcx, [s_ext]
+    call fatal
+
 global start
 start:
     mov rcx, [rsp]
@@ -153,20 +192,27 @@ start:
     test eax, eax
     jnz .help
     mov rcx, [r12]
-    lea rdx, [a_check]
+    lea rdx, [a_examine]
     call streq
     test eax, eax
-    jnz .check
-    mov rcx, [r12]
-    lea rdx, [a_build]
-    call streq
-    test eax, eax
-    jnz .build
+    jnz .examine
     mov rcx, [r12]
     lea rdx, [a_run]
     call streq
     test eax, eax
     jnz .run
+    mov rcx, [r12]
+    call zlen
+    cmp rax, 3
+    jb .unknown
+    mov rcx, [r12]
+    cmp byte [rcx + rax - 3], '.'
+    jne .unknown
+    cmp byte [rcx + rax - 2], 'e'
+    jne .unknown
+    cmp byte [rcx + rax - 1], 's'
+    je .build_run
+.unknown:
     lea rcx, [s_unknown]
     mov rdx, [r12]
     call fatal_path
@@ -198,27 +244,24 @@ start:
     mov rdx, [r12 + 8]
     call fatal_path
 
-.check:
-    xor r13d, r13d
-    mov r14d, 1
+.extra2:
+    lea rcx, [s_unexpect]
+    mov rdx, [r12 + 16]
+    call fatal_path
+
+.missing:
+    lea rcx, [s_missing]
+    call fatal
+
+.examine:
     cmp rbx, 2
     jb .missing
-    mov rcx, [r12 + 8]
-    lea rdx, [a_syntax]
-    call streq
-    test eax, eax
-    jz .check_file
-    mov r13d, 1
-    mov r14d, 2
-.check_file:
-    lea eax, [r14d + 1]
-    cmp rbx, rax
-    jb .missing
-    ja .extra_at
-    mov r15, [r12 + r14 * 8]
+    ja .extra2
+    mov r15, [r12 + 8]
     mov rcx, r15
-    mov edx, r13d
+    xor edx, edx
     call frontend
+    call codegen
     lea rcx, [s_ok]
     call write_outz
     mov rcx, r15
@@ -228,96 +271,52 @@ start:
     xor ecx, ecx
     call sys_exit
 
-.extra_at:
-    lea rcx, [s_unexpect]
-    mov rdx, [r12 + r14 * 8 + 8]
-    call fatal_path
-
-.missing:
-    lea rcx, [s_missing]
-    call fatal
-
-.build:
-    cmp rbx, 2
-    jb .missing
-    mov r15, [r12 + 8]
-    cmp rbx, 2
-    je .build_default
-    mov r14d, 2
-    mov rcx, [r12 + 16]
-    lea rdx, [a_o]
-    call streq
-    test eax, eax
-    jz .extra_at_build
-    cmp rbx, 4
-    jb .missing_o
-    mov r14d, 3
-    ja .extra_at
-    mov r13, [r12 + 24]
-    jmp .build_go
-.extra_at_build:
-    lea rcx, [s_unexpect]
-    mov rdx, [r12 + 16]
-    call fatal_path
-.missing_o:
-    lea rcx, [s_missing_o]
-    call fatal
-.build_default:
-    mov rcx, r15
-    call zlen
-    lea rdx, [rax - 3]
-    mov rcx, r15
-    lea r8, [s_empty]
-    lea r9, [s_empty]
-    call join_stem
-    mov r13, rax
-.build_go:
-    mov rcx, r15
-    xor edx, edx
-    call frontend
-    mov rcx, r13
-    call emit_and_write
-    lea rcx, [s_built]
-    call write_outz
-    mov rcx, r13
-    call write_outz
-    lea rcx, [s_crlf]
-    call write_outz
-    xor ecx, ecx
-    call sys_exit
-
 .run:
     cmp rbx, 2
     jb .missing
-    mov r14d, 1
-    ja .extra_at
+    ja .extra2
     mov r15, [r12 + 8]
+    mov rcx, r15
+    call check_ext
+    mov rcx, r15
+    call exe_path
+    mov r13, rax
+    mov rcx, r13
+    call read_file
+    test rax, rax
+    jz .not_built
+    mov rcx, r13
+    call run_process
+    cmp eax, -1
+    jne .run_exit
+.not_built:
+    mov rcx, r13
+    call zlen
+    mov rdx, rax
+    mov rcx, r13
+    lea r8, [s_quote1]
+    lea r9, [s_not_built]
+    call join_stem
+    mov r14, rax
+    mov rcx, r15
+    call zlen
+    mov rdx, rax
+    mov rcx, r15
+    mov r8, r14
+    lea r9, [s_first]
+    call join_stem
+    mov rcx, rax
+    call fatal
+
+.build_run:
+    cmp rbx, 1
+    ja .extra1
+    mov r15, [r12]
     mov rcx, r15
     xor edx, edx
     call frontend
     mov rcx, r15
-    call zlen
-    lea rsi, [r15 + rax - 3]
-    mov rdi, rsi
-.base:
-    cmp rdi, r15
-    jbe .base_done
-    mov al, [rdi - 1]
-    cmp al, '\'
-    je .base_done
-    cmp al, '/'
-    je .base_done
-    cmp al, ':'
-    je .base_done
-    dec rdi
-    jmp .base
-.base_done:
-    mov rcx, rdi
-    mov rdx, rsi
-    sub rdx, rdi
-    lea r8, [s_ender_pre]
-    lea r9, [s_empty]
-    call join_stem
+    call exe_path
     mov r13, rax
     lea rcx, [s_ender_dir]
     call make_dir
