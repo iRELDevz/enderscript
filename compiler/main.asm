@@ -22,34 +22,30 @@ section .rdata
 s_version   db "EnderScript 0.1.1 (Windows x32)", 13, 10, 0
 s_help      db "EnderScript 0.1.1 (Windows x32)", 13, 10, 13, 10
             db "Usage:", 13, 10
-            db "  ender check <file.es>            Check syntax, semantics, and types", 13, 10
-            db "  ender check --syntax <file.es>   Check syntax only", 13, 10
-            db "  ender build <file.es>            Build <file>.exe", 13, 10
-            db "  ender build <file.es> -o <out>   Build the selected output path", 13, 10
-            db "  ender run <file.es>              Build into .ender\ and run", 13, 10
+            db "  ender <file.es>             Build into .ender\ and run", 13, 10
+            db "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe", 13, 10
+            db "  ender run <file.es>         Run the program built earlier in .ender\", 13, 10
             db "  ender --version", 13, 10
             db "  ender --help", 13, 10, 0
 a_version   db "--version", 0
 a_help      db "--help", 0
-a_check     db "check", 0
-a_syntax    db "--syntax", 0
-a_build     db "build", 0
+a_examine   db "examine", 0
 a_run       db "run", 0
-a_o         db "-o", 0
 s_unknown   db "unknown command '", 0
 s_unexpect  db "unexpected argument '", 0
 s_missing   db "missing input file", 0
-s_missing_o db "missing output path after -o", 0
+s_err_q     db "error: '", 0
+s_not_built db "' is not built yet, run 'ender ", 0
+s_first     db "' first", 13, 10, 0
 s_ext       db "input file must use the .es extension", 0
 s_big       db "source file is larger than 16 MB", 0
 s_cant_read db "cannot read '", 0
 s_cant_wr   db "cannot write '", 0
 s_cant_run  db "cannot run '", 0
 s_ok        db "ok ", 0
-s_built     db "built ", 0
 s_crlf      db 13, 10, 0
 s_ender_dir db ".ender", 0
-s_ender_pre db ".ender\", 0
+s_ender_pre db ".\.ender\", 0
 s_exe       db ".exe", 0
 s_empty     db 0
 
@@ -255,12 +251,14 @@ start:
     jnz .version
     ARGEQ 0, a_help
     jnz .help
-    ARGEQ 0, a_check
-    jnz .check
-    ARGEQ 0, a_build
-    jnz .build
+    ARGEQ 0, a_examine
+    jnz .examine
     ARGEQ 0, a_run
     jnz .run
+    mov ecx, [argv]
+    call is_es
+    test eax, eax
+    jnz .build_run
     mov ecx, s_unknown
     mov edx, [argv]
     call fatal_path
@@ -289,73 +287,19 @@ start:
     mov ecx, 1
     call sys_exit
 
-.check:
-    mov dword [syn_only], 0
-    mov dword [file_idx], 1
+.examine:
     cmp ebx, 2
     jb missing
-    ARGEQ 1, a_syntax
-    jz .check_file
-    mov dword [syn_only], 1
-    mov dword [file_idx], 2
-.check_file:
-    mov eax, [file_idx]
-    cmp ebx, eax
-    jbe missing
-    inc eax
-    cmp ebx, eax
-    ja extra_arg
-    mov eax, [file_idx]
-    mov esi, [argv + eax * 4]
-    mov ecx, esi
-    mov edx, [syn_only]
-    call frontend
-    mov ecx, s_ok
-    call write_outz
-    mov ecx, esi
-    call write_outz
-    mov ecx, s_crlf
-    call write_outz
-    xor ecx, ecx
-    call sys_exit
-
-.build:
-    cmp ebx, 2
-    jb missing
-    mov esi, [argv + 4]
-    je .build_default
-    ARGEQ 2, a_o
-    jnz .build_o
     mov eax, 2
-    jmp extra_arg
-.build_o:
-    cmp ebx, 4
-    jb .missing_o
-    mov eax, 4
     ja extra_arg
-    mov eax, [argv + 12]
-    mov [out_path], eax
-    jmp .build_go
-.missing_o:
-    mov ecx, s_missing_o
-    call fatal
-.build_default:
-    mov ecx, esi
-    call zlen
-    lea edx, [eax - 3]
-    mov ecx, esi
-    mov eax, s_empty
-    call join_stem
-    mov [out_path], eax
-.build_go:
+    mov esi, [argv + 4]
     mov ecx, esi
     xor edx, edx
     call frontend
-    mov ecx, [out_path]
-    call emit_and_write
-    mov ecx, s_built
+    call codegen
+    mov ecx, s_ok
     call write_outz
-    mov ecx, [out_path]
+    mov ecx, esi
     call write_outz
     mov ecx, s_crlf
     call write_outz
@@ -369,29 +313,47 @@ start:
     ja extra_arg
     mov esi, [argv + 4]
     mov ecx, esi
+    call is_es
+    test eax, eax
+    jnz .run_ok
+    mov ecx, s_ext
+    call fatal
+.run_ok:
+    mov ecx, esi
+    call exe_path
+    mov [out_path], eax
+    mov ecx, eax
+    call read_file
+    test eax, eax
+    jz .not_built
+    mov ecx, [out_path]
+    call run_process
+    cmp eax, -1
+    jne .run_exit
+.not_built:
+    mov ecx, s_err_q
+    call write_errz
+    mov ecx, [out_path]
+    call write_errz
+    mov ecx, s_not_built
+    call write_errz
+    mov ecx, esi
+    call write_errz
+    mov ecx, s_first
+    call write_errz
+    mov ecx, 1
+    call sys_exit
+
+.build_run:
+    mov eax, 1
+    cmp ebx, 1
+    ja extra_arg
+    mov esi, [argv]
+    mov ecx, esi
     xor edx, edx
     call frontend
     mov ecx, esi
-    call zlen
-    lea edx, [esi + eax - 3]
-    mov edi, edx
-.base:
-    cmp edi, esi
-    jbe .base_done
-    mov al, [edi - 1]
-    cmp al, '\'
-    je .base_done
-    cmp al, '/'
-    je .base_done
-    cmp al, ':'
-    je .base_done
-    dec edi
-    jmp .base
-.base_done:
-    mov ecx, edi
-    sub edx, edi
-    mov eax, s_ender_pre
-    call join_stem
+    call exe_path
     mov [out_path], eax
     mov ecx, s_ender_dir
     call make_dir
@@ -407,3 +369,45 @@ start:
 .run_exit:
     mov ecx, eax
     call sys_exit
+
+is_es:
+    push ecx
+    call zlen
+    pop ecx
+    mov edx, eax
+    xor eax, eax
+    cmp edx, 3
+    jb .r
+    cmp byte [ecx + edx - 3], '.'
+    jne .r
+    cmp byte [ecx + edx - 2], 'e'
+    jne .r
+    cmp byte [ecx + edx - 1], 's'
+    jne .r
+    mov eax, 1
+.r:
+    ret
+
+FUNC exe_path
+    mov esi, ecx
+    call zlen
+    lea edx, [esi + eax - 3]
+    mov edi, edx
+.base:
+    cmp edi, esi
+    jbe .base_done
+    mov al, [edi - 1]
+    cmp al, 92
+    je .base_done
+    cmp al, '/'
+    je .base_done
+    cmp al, ':'
+    je .base_done
+    dec edi
+    jmp .base
+.base_done:
+    mov ecx, edi
+    sub edx, edi
+    mov eax, s_ender_pre
+    call join_stem
+    ENDF
