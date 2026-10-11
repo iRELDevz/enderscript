@@ -2255,14 +2255,15 @@ emit_loop_head:
 .for_init:
     cmp dword [esi + B_REG], NOREG
     je .for_init_mem
+    mov eax, 0xB8
     mov ecx, [esi + B_REG]
-    mov edx, ecx
-    mov eax, 0x31
-    call e_rr
+    call emit_reg1
+    mov edx, 1
+    call x86_imm32
     jmp .for_jump
 .for_init_mem:
     OPA 0x05C7, 2, [esi + B_SLOT]
-    xor edx, edx
+    mov edx, 1
     call x86_imm32
 .for_jump:
     cmp dword [esi + B_DYN], 0
@@ -2384,7 +2385,7 @@ emit_loop_tail:
 .for_cmp_mem_slot:
     OPA 0x053B, 2, [esi + B_LIMIT]
 .jl_back:
-    BYTES 0x8C0F, 2
+    BYTES 0x8E0F, 2
     mov ecx, [esi + B_TOP]
     jmp emit_rel32_back
 .loops_tail:
@@ -2862,6 +2863,11 @@ idx_proven:
     push ebx
     mov esi, edx
     call node_addr
+    cmp byte [eax + V_KIND], VK_VAR
+    jne .not_var
+    xor ebx, ebx
+    jmp .check
+.not_var:
     cmp byte [eax + V_KIND], VK_EXPR
     jne .no
     cmp byte [eax + V_NEG], OP_ADD
@@ -2887,7 +2893,7 @@ idx_proven:
     jne .no
     mov ebx, [eax + V_DATA]
 .check:
-    cmp ebx, 1
+    cmp ebx, 0
     jl .no
     call node_addr
     cmp byte [eax + V_KIND], VK_VAR
@@ -2910,7 +2916,6 @@ idx_proven:
     cmp dword [eax + B_DYN], 0
     jne .no
     mov eax, [eax + B_LIMIT]
-    dec eax
     add eax, ebx
     cmp eax, esi
     jg .no
