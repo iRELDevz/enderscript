@@ -49,6 +49,8 @@ default rel
 %define TK_BREAK    45
 %define TK_CONTINUE 46
 %define TK_INPUT    47
+%define TK_LBRACK   48
+%define TK_RBRACK   49
 
 %define T_KIND      0
 %define T_COL       2
@@ -72,6 +74,8 @@ default rel
 %define VK_OR       8
 %define VK_AND      9
 %define VK_TAKE     10
+%define VK_ELEM     11
+%define VK_LEN      12
 
 %define CMP_IS      1
 %define CMP_ISNOT   2
@@ -101,6 +105,8 @@ default rel
 %define SK_CONTINUE 9
 %define SK_GROUP    10
 %define SK_INPUT    11
+%define SK_ADECL    12
+%define SK_ASET     13
 
 %define BK_IF       1
 %define BK_LOOP     2
@@ -125,6 +131,7 @@ default rel
 %define VR_TYPE     12
 %define VR_OFF      16
 %define VR_LINE     20
+%define VR_ALEN     24
 %define VR_SIZE     32
 
 %define PK_TEXT     1
@@ -132,6 +139,7 @@ default rel
 %define PK_BOOL     3
 %define PK_STR      4
 %define PK_EXPR     5
+%define PK_ELEM     6
 
 %define P_KIND      0
 %define P_A         4
@@ -151,6 +159,7 @@ default rel
 %define MAX_NODES   2000
 %define MAX_BLOCKS  100
 %define MAX_OR      64
+%define MAX_ALEN    1048576
 
 %define RT_OUT_LEN    0
 %define RT_INLEFT     4

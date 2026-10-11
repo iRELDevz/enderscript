@@ -49,7 +49,7 @@ The same syntax and results on Windows and Linux, for x64, x86, and ARM64.
 
 ### Not available yet
 
-Functions, arrays, and decimal numbers.
+Functions and decimal numbers.
 
 ## Target
 
@@ -301,6 +301,34 @@ print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
 - An empty line gives `""`. When the input has ended, a `str` gets `null` and an `int` gets 0.
 - A `bool` variable cannot be read from input.
 
+### Arrays
+
+```
+nilai.int[5] = 10, 20, 30
+nama.str[3] = "Andi", "Budi"
+aktif.bool[4] = true.all
+print>>nilai[1]
+print>>"jumlah elemen: "{nilai.len}
+nilai[4] = 40
+total.int = 0
+for i in range(nilai.len):
+  total = total + nilai[i + 1]
+print>>"total "{total}
+nama[3] = input>>"Nama ketiga? "
+print>>nama[3]
+```
+
+- `name.type[N] = values` declares an array with N elements. N is a whole number from 1 to 1048576 and must be written, so `a.int[] =` is an error.
+- Elements are numbered from 1: `nilai[1]` is the first element and `nilai[nilai.len]` is the last.
+- Values are separated by commas and fill the array from the first element. Elements without a value get the default of the type (`0`, `null`, or `false`). More values than elements is an error.
+- A single value followed by `.all`, such as `true.all`, goes into every element. `aktif.bool[4] = true` only sets the first element.
+- `name[index] = value` changes one element, and `name[index] =` resets it to the default. `name[index] = input>>"..."` reads one element of type `int` or `str`.
+- An element can be used anywhere a value of its type is allowed: in arithmetic, in conditions, inside `{ }` in `print>>`, and as the value of another variable.
+- `name.len` is the number of elements. It is known at compile time.
+- An index written as a number is checked by the compiler, for example `index 6 is outside 1..5 of array 'nilai'`. An index computed while the program runs is checked at run time. If it is out of range, the program prints `runtime error: array index out of range on line N` to stderr and exits with code 1.
+- Arrays are declared at the top level, not inside `if` or a loop. Declaring the same array again with the same type and size gives a warning and resets every element.
+- Inside a `for` loop, an index such as `i + 1` that the compiler can prove is in range is used without the run-time check.
+
 ### General rules
 
 - One statement per line. Empty lines are ignored.
@@ -375,7 +403,7 @@ Sintaks dan hasil yang sama di Windows dan Linux, untuk x64, x86, dan ARM64.
 
 ### Yang belum ada
 
-Fungsi, array, dan bilangan desimal belum tersedia.
+Fungsi dan bilangan desimal belum tersedia.
 
 ## Target
 
@@ -627,6 +655,34 @@ print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
 - Baris kosong menghasilkan `""`. Kalau input sudah habis, `str` berisi `null` dan `int` berisi 0.
 - Variabel `bool` tidak bisa diisi dari input.
 
+### Array
+
+```
+nilai.int[5] = 10, 20, 30
+nama.str[3] = "Andi", "Budi"
+aktif.bool[4] = true.all
+print>>nilai[1]
+print>>"jumlah elemen: "{nilai.len}
+nilai[4] = 40
+total.int = 0
+for i in range(nilai.len):
+  total = total + nilai[i + 1]
+print>>"total "{total}
+nama[3] = input>>"Nama ketiga? "
+print>>nama[3]
+```
+
+- `nama.tipe[N] = nilai` membuat array berisi N elemen. N adalah bilangan bulat 1 sampai 1048576 dan wajib ditulis, jadi `a.int[] =` adalah error.
+- Elemen dinomori mulai dari 1: `nilai[1]` adalah elemen pertama dan `nilai[nilai.len]` elemen terakhir.
+- Nilai dipisah koma dan mengisi array mulai dari elemen pertama. Elemen yang tidak diberi nilai berisi default tipenya (`0`, `null`, atau `false`). Nilai yang lebih banyak dari jumlah elemen adalah error.
+- Satu nilai yang diikuti `.all`, misalnya `true.all`, mengisi semua elemen. `aktif.bool[4] = true` hanya mengisi elemen pertama.
+- `nama[index] = nilai` mengubah satu elemen, dan `nama[index] =` mengembalikannya ke default. `nama[index] = input>>"..."` membaca satu elemen bertipe `int` atau `str`.
+- Elemen boleh dipakai di mana pun nilai bertipe sama boleh dipakai: di aritmetika, di kondisi, di dalam `{ }` pada `print>>`, dan sebagai isi variabel lain.
+- `nama.len` adalah jumlah elemen. Nilainya sudah diketahui saat compile.
+- Index yang ditulis sebagai angka dicek oleh compiler, misalnya `index 6 is outside 1..5 of array 'nilai'`. Index yang dihitung saat program jalan dicek saat program jalan. Kalau di luar batas, program mencetak `runtime error: array index out of range on line N` ke stderr lalu keluar dengan exit code 1.
+- Array dideklarasikan di tingkat atas, tidak di dalam `if` atau loop. Deklarasi ulang array yang sama dengan tipe dan ukuran sama memberi warning dan mengosongkan semua elemen.
+- Di dalam loop `for`, index seperti `i + 1` yang bisa dibuktikan compiler masih dalam batas dipakai tanpa pengecekan saat program jalan.
+
 ### Aturan umum
 
 - Satu statement per baris. Baris kosong diabaikan.
@@ -701,7 +757,7 @@ Windows と Linux の x64、x86、ARM64 で、同じ構文と同じ結果にな�
 
 ### まだないもの
 
-関数、配列、小数。
+関数と小数。
 
 ## ターゲット
 
@@ -953,6 +1009,34 @@ print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
 - 空行は `""` になります。入力が終わっている場合、`str` は `null`、`int` は 0 になります。
 - `bool` 変数は入力から読み込めません。
 
+### 配列
+
+```
+nilai.int[5] = 10, 20, 30
+nama.str[3] = "Andi", "Budi"
+aktif.bool[4] = true.all
+print>>nilai[1]
+print>>"jumlah elemen: "{nilai.len}
+nilai[4] = 40
+total.int = 0
+for i in range(nilai.len):
+  total = total + nilai[i + 1]
+print>>"total "{total}
+nama[3] = input>>"Nama ketiga? "
+print>>nama[3]
+```
+
+- `名前.型[N] = 値` は N 個の要素を持つ配列を宣言します。N は 1 から 1048576 までの整数で、必ず書きます。`a.int[] =` はエラーです。
+- 要素の番号は 1 から始まります。`nilai[1]` が最初の要素、`nilai[nilai.len]` が最後の要素です。
+- 値はカンマで区切り、最初の要素から順に入ります。値のない要素は型のデフォルト (`0`、`null`、`false`) になります。要素数より多い値はエラーです。
+- 1 つの値の後に `.all` を付けると (例: `true.all`)、すべての要素にその値が入ります。`aktif.bool[4] = true` は最初の要素だけを設定します。
+- `名前[index] = 値` は 1 つの要素を変更し、`名前[index] =` はデフォルトに戻します。`名前[index] = input>>"..."` は `int` または `str` の要素を 1 つ読み込みます。
+- 要素は同じ型の値が使える場所ならどこでも使えます。算術、条件、`print>>` の `{ }` の中、別の変数の値などです。
+- `名前.len` は要素数です。コンパイル時に決まります。
+- 数値で書いた index はコンパイラが検査します。例: `index 6 is outside 1..5 of array 'nilai'`。実行中に計算される index は実行時に検査され、範囲外なら `runtime error: array index out of range on line N` を stderr に出して終了コード 1 で終了します。
+- 配列はトップレベルで宣言します。`if` やループの中では宣言できません。同じ型と同じサイズで同じ配列を再宣言すると warning が出て、すべての要素がリセットされます。
+- `for` ループの中で `i + 1` のように範囲内だとコンパイラが証明できる index は、実行時の検査なしで使われます。
+
 ### 一般的なルール
 
 - 1 行に 1 文です。空行は無視されます。
@@ -1027,7 +1111,7 @@ Windows x64 上的基准测试结果:
 
 ### 尚未支持
 
-函数、数组和小数。
+函数和小数。
 
 ## 目标平台
 
@@ -1279,6 +1363,34 @@ print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
 - 空行得到 `""`。输入结束后，`str` 得到 `null`，`int` 得到 0。
 - `bool` 变量不能从输入读取。
 
+### 数组
+
+```
+nilai.int[5] = 10, 20, 30
+nama.str[3] = "Andi", "Budi"
+aktif.bool[4] = true.all
+print>>nilai[1]
+print>>"jumlah elemen: "{nilai.len}
+nilai[4] = 40
+total.int = 0
+for i in range(nilai.len):
+  total = total + nilai[i + 1]
+print>>"total "{total}
+nama[3] = input>>"Nama ketiga? "
+print>>nama[3]
+```
+
+- `名称.类型[N] = 值` 声明一个有 N 个元素的数组。N 是 1 到 1048576 的整数，必须写出，所以 `a.int[] =` 是错误。
+- 元素从 1 开始编号: `nilai[1]` 是第一个元素，`nilai[nilai.len]` 是最后一个。
+- 值用逗号分隔，从第一个元素开始依次填入。没有给值的元素是该类型的默认值 (`0`、`null` 或 `false`)。值比元素多是错误。
+- 单个值后面加 `.all` (例如 `true.all`) 会填入所有元素。`aktif.bool[4] = true` 只设置第一个元素。
+- `名称[index] = 值` 修改一个元素，`名称[index] =` 把它恢复为默认值。`名称[index] = input>>"..."` 读取一个 `int` 或 `str` 元素。
+- 元素可以用在任何允许同类型值的地方: 算术、条件、`print>>` 的 `{ }` 中，以及作为另一个变量的值。
+- `名称.len` 是元素个数，在编译时就已确定。
+- 写成数字的 index 由编译器检查，例如 `index 6 is outside 1..5 of array 'nilai'`。运行时计算的 index 在运行时检查，越界时程序向 stderr 输出 `runtime error: array index out of range on line N` 并以退出码 1 结束。
+- 数组在顶层声明，不能在 `if` 或循环内声明。用相同类型和大小再次声明同一个数组会给出 warning，并重置所有元素。
+- 在 `for` 循环中，编译器能证明在范围内的 index (例如 `i + 1`) 不做运行时检查。
+
 ### 通用规则
 
 - 每行一条语句。空行会被忽略。
@@ -1353,7 +1465,7 @@ Windows और Linux पर x64, x86 और ARM64 के लिए एक जै
 
 ### अभी उपलब्ध नहीं
 
-फ़ंक्शन, ऐरे और दशमलव संख्याएँ।
+फ़ंक्शन और दशमलव संख्याएँ।
 
 ## लक्ष्य
 
@@ -1604,6 +1716,34 @@ print>>"Halo "{nama}", tahun depan umurmu "{umur + 1}
 - `int` वेरिएबल के लिए संख्या लाइन की शुरुआत से पढ़ी जाती है (स्पेस और `-` या `+` चिह्न चलते हैं)। संख्या न हो तो परिणाम 0 है।
 - खाली लाइन से `""` मिलता है। इनपुट ख़त्म होने पर `str` में `null` और `int` में 0 आता है।
 - `bool` वेरिएबल को इनपुट से नहीं पढ़ा जा सकता।
+
+### ऐरे
+
+```
+nilai.int[5] = 10, 20, 30
+nama.str[3] = "Andi", "Budi"
+aktif.bool[4] = true.all
+print>>nilai[1]
+print>>"jumlah elemen: "{nilai.len}
+nilai[4] = 40
+total.int = 0
+for i in range(nilai.len):
+  total = total + nilai[i + 1]
+print>>"total "{total}
+nama[3] = input>>"Nama ketiga? "
+print>>nama[3]
+```
+
+- `नाम.टाइप[N] = मान` N एलिमेंट वाला ऐरे बनाता है। N 1 से 1048576 तक की पूर्ण संख्या है और लिखना ज़रूरी है, इसलिए `a.int[] =` एक त्रुटि है।
+- एलिमेंट की गिनती 1 से शुरू होती है: `nilai[1]` पहला एलिमेंट है और `nilai[nilai.len]` आख़िरी।
+- मान कॉमा से अलग किए जाते हैं और पहले एलिमेंट से भरे जाते हैं। जिन एलिमेंट को मान नहीं मिलता उनमें टाइप का डिफ़ॉल्ट (`0`, `null` या `false`) होता है। एलिमेंट से ज़्यादा मान देना त्रुटि है।
+- एक मान के बाद `.all` लिखने पर (जैसे `true.all`) वह मान हर एलिमेंट में जाता है। `aktif.bool[4] = true` सिर्फ़ पहला एलिमेंट सेट करता है।
+- `नाम[index] = मान` एक एलिमेंट बदलता है, और `नाम[index] =` उसे डिफ़ॉल्ट पर लौटाता है। `नाम[index] = input>>"..."` `int` या `str` का एक एलिमेंट पढ़ता है।
+- एलिमेंट हर उस जगह इस्तेमाल हो सकता है जहाँ उसी टाइप का मान चलता है: अंकगणित, शर्तें, `print>>` के `{ }` के अंदर, और किसी दूसरे वेरिएबल के मान के रूप में।
+- `नाम.len` एलिमेंट की संख्या है। यह कंपाइल के समय ही तय होती है।
+- संख्या के रूप में लिखा index कंपाइलर जाँचता है, जैसे `index 6 is outside 1..5 of array 'nilai'`। प्रोग्राम चलते समय निकाला गया index चलते समय जाँचा जाता है। सीमा से बाहर होने पर प्रोग्राम stderr पर `runtime error: array index out of range on line N` छापता है और exit code 1 के साथ बंद होता है।
+- ऐरे सबसे ऊपरी स्तर पर घोषित होते हैं, `if` या लूप के अंदर नहीं। उसी टाइप और साइज़ के साथ वही ऐरे दोबारा घोषित करने पर warning मिलती है और सारे एलिमेंट रीसेट हो जाते हैं।
+- `for` लूप के अंदर `i + 1` जैसा index, जिसे कंपाइलर सीमा के अंदर साबित कर सके, बिना रनटाइम जाँच के इस्तेमाल होता है।
 
 ### सामान्य नियम
 
