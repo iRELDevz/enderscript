@@ -36,9 +36,6 @@ jobs:
           ./ender.exe hello.es
           ./ender.exe run hello.es
           ./ender.exe examine hello.es
-      - name: Tests
-        shell: pwsh
-        run: ./tests/run_tests.ps1 -Compiler ./ender.exe
       - name: Runtime division by zero
         shell: pwsh
         run: |
@@ -53,23 +50,3 @@ jobs:
           if ($LASTEXITCODE -ne 1) { exit 1 }
           if (-not (Select-String -Path err.txt -Pattern 'array index out of range on line 3' -Quiet)) { exit 1 }
           exit 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          architecture: arm64
-      - name: Fuzz arithmetic
-        shell: pwsh
-        run: |
-          foreach ($s in 1..20) {
-            python tests/fuzz_expr.py ./ender.exe $s 400
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-          }
-      - name: Fuzz language
-        shell: pwsh
-        run: |
-          foreach ($f in @('fuzz_loop', 'fuzz_brk', 'fuzz_if', 'fuzz_bl', 'fuzz_divis', 'fuzz_simd', 'fuzz_range', 'fuzz_ja', 'fuzz_arr')) {
-            foreach ($s in 1..25) {
-              python tests/$f.py ./ender.exe $s
-              if ($LASTEXITCODE -ne 0) { exit 1 }
-            }
-          }

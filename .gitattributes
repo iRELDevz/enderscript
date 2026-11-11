@@ -8,3 +8,4 @@
 *.es -text
 *.expect -text
 *.out -text
+*.es linguist-detectable=false
