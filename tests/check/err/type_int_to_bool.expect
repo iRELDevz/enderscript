@@ -1,0 +1,1 @@
+type_int_to_bool.es:1:10: type error: cannot assign int to bool variable 'a'
