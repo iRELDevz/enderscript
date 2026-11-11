@@ -1,9 +1,0 @@
-b.int = 12
-b = 30
-b =
-a.str = "DATA"
-a = "BARU"
-a =
-e.bool = true
-e = false
-e =

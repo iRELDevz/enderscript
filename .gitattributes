@@ -1,2 +1,2 @@
-*/tests/** linguist-documentation
 *.yml text eol=lf
+*.es linguist-detectable=false
