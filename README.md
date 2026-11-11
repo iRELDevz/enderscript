@@ -1,4 +1,4 @@
-# EnderScript 1.2.0
+# EnderScript 1.2.1
 
 English · Bahasa Indonesia · 日本語 · 简体中文
 
@@ -9,37 +9,56 @@ This repository is the original and first repository of the EnderScript project.
 
 EnderScript compiles straight to machine code, with no interpreter, VM, garbage collector, or large runtime. The compiler itself is written entirely in assembly and writes the exe file on its own, so building a program needs no assembler, linker, or other toolchain.
 
+> **Note:** `range(n)` runs from **1 to n inclusive**, unlike Python. `for i in range(3):` gives `i` = 1, 2, 3. Arrays are numbered from 1 too.
+
 ## Why EnderScript
 
 ### Fast
 
-The compiler applies optimizations aimed at loops and arithmetic: constant division without `idiv`, loop counters kept in registers, branchless conditions, SIMD, loops computed directly with a closed formula, and dedicated code for common loop patterns (array fill, sieve, counting, lcg).
+The compiler applies optimizations aimed at loops and arithmetic. Not every architecture has all of them yet:
+
+| Optimization | x86 | x64 | ARM64 |
+|---|---|---|---|
+| Constant division without `idiv` | yes | yes | yes |
+| Loop counters in registers | yes | yes | yes |
+| Branchless conditions | yes | yes | yes |
+| Array index check skipped when provably in range | yes | yes | yes |
+| Variables promoted to registers in hot loops | yes | yes | - |
+| Unsigned division when a value is provably non-negative | yes | yes | - |
+| Array fill with `rep stosd` | yes | yes | - |
+| Sieve mark loop with one hoisted range check | yes | yes | - |
+| Zero count with SSE | yes | yes | - |
+| LCG loops run several iterations per pass | yes | yes | - |
+| General loop unrolling and SIMD | - | yes | - |
+| Loops computed with a closed formula | - | yes | - |
+
+ARM64 currently has only the basic optimizations, so ARM64 programs are slower than x86 and x64.
 
 Benchmark results on Windows 32-bit (ms, fastest run, every language produces exactly the same output):
 
 | Benchmark | EnderScript | C | C++ | Zig |
 |---|---|---|---|---|
-| hello | 4.4 | 5.4 | 5.7 | 4.6 |
-| lcg | 112.3 | 143.7 | 143.1 | 224.8 |
-| fizz | 201.6 | 313.4 | 314.6 | 308.2 |
-| modchain | 280.2 | 368.8 | 367.6 | 364.6 |
-| sieve | 53.4 | 54.0 | 55.2 | 58.0 |
-| print | 23.1 | 100.0 | 107.1 | 24.3 |
-| pipe | 33.2 | 252.5 | 1505.1 | 35.0 |
+| hello | 4.2 | 5.2 | 5.4 | 4.6 |
+| lcg | 110.7 | 142.4 | 139.5 | 219.2 |
+| fizz | 197.6 | 306.9 | 306.2 | 303.7 |
+| modchain | 274.8 | 360.6 | 357.3 | 356.3 |
+| sieve | 50.5 | 52.9 | 53.1 | 56.4 |
+| print | 20.9 | 95.4 | 102.0 | 23.3 |
+| pipe | 30.9 | 243.3 | 1460.2 | 31.4 |
 
 Benchmark results on Windows x64 (ms, fastest run, every language produces exactly the same output):
 
 | Benchmark | EnderScript | C | C++ | Rust | Zig | Python |
 |---|---|---|---|---|---|---|
-| hello | 3.3 | 3.9 | 4.2 | 4.7 | 3.6 | 17.4 |
-| lcg | 155.6 | 691.7 | 680.3 | 178.2 | 173.6 | 30928.6 |
-| fizz | 186.1 | 577.9 | 579.3 | 264.2 | 278.1 | 16668.5 |
-| modchain | 237.1 | 371.9 | 369.0 | 390.2 | 413.4 | 11783.2 |
-| sieve | 50.1 | 53.1 | 53.2 | 51.2 | 52.8 | 2551.9 |
-| print | 11.2 | 66.7 | 33.6 | 21.6 | 12.0 | 577.4 |
-| pipe | 15.9 | 167.3 | 94.7 | 33.8 | 21.5 | 363.1 |
+| hello | 3.2 | 3.9 | 3.9 | 4.3 | 3.5 | 16.8 |
+| lcg | 151.9 | 177.5 | 176.1 | 175.0 | 172.9 | 30571.9 |
+| fizz | 175.7 | 264.8 | 263.3 | 260.5 | 277.1 | 17061.0 |
+| modchain | 235.8 | 388.4 | 384.3 | 393.0 | 416.5 | 12392.2 |
+| sieve | 50.7 | 51.7 | 51.2 | 51.2 | 53.2 | 2629.8 |
+| print | 11.3 | 69.4 | 83.4 | 21.6 | 12.0 | 583.4 |
+| pipe | 16.6 | 162.8 | 1081.6 | 34.3 | 20.3 | 352.2 |
 
-ARM64 benchmarks are not available yet. They will follow once ARM64 is tested on real ARM hardware.
+C and C++ are built with clang (`zig cc -O2`), Rust with `rustc -C opt-level=3`, and Zig with `-O ReleaseFast`. The source of every benchmark, the exact flags, and a script to rerun them are in [enderscript-bench](https://github.com/iRELDevz/enderscript-bench). ARM64 benchmarks are not available yet.
 
 ### Small
 
@@ -60,6 +79,8 @@ ARM64 benchmarks are not available yet. They will follow once ARM64 is tested on
 - Types are checked before the program runs.
 - Error messages give the file, line, and column.
 - Int overflow always wraps, and division by zero is reported with its line number.
+- Source files saved with a UTF-8 BOM (Notepad, PowerShell 5.1) are accepted.
+- `input` has no total size limit. Each line can be up to 65535 bytes.
 
 ### Not available yet
 
@@ -77,7 +98,7 @@ Linux is coming later.
 
 ## Download
 
-Get the `ender.exe` for your machine from the [releases](https://github.com/iRELDevz/enderscript/releases) page. Nothing to install. Release 1.2.0 currently ships x86 and x64, and ARM64 will follow.
+Get the `ender.exe` for your machine from the [releases](https://github.com/iRELDevz/enderscript/releases) page. Nothing to install. Releases currently ship x86 and x64. ARM64 builds but has not been run on real ARM hardware yet, so it is not released.
 
 ## Build it yourself
 
@@ -392,37 +413,56 @@ ini repo asli dan pertama dari project EnderScript. repo lain cuma pendukung, ga
 
 EnderScript itu bahasa yang langsung di-compile jadi machine code. ga ada interpreter, ga ada VM, ga ada garbage collector, ga ada runtime gede. compilernya sendiri ditulis full pake assembly, terus nulis file exe-nya sendiri juga, jadi pas build program lo ga butuh assembler, linker, atau toolchain lain.
 
+> **catatan:** `range(n)` jalan dari **1 sampe n**, beda sama python. `for i in range(3):` ngasih `i` = 1, 2, 3. array juga mulai dari 1.
+
 ## kenapa EnderScript
 
 ### kenceng
 
-compilernya punya optimasi khusus buat loop sama aritmetika: bagi pake konstanta tanpa `idiv`, counter loop ditaro di register, kondisi tanpa cabang, SIMD, loop yang bisa diitung langsung pake rumus, sama loop pola tertentu (isi array, sieve, hitung, lcg) yang dikompilasi khusus.
+compilernya punya optimasi khusus buat loop sama aritmetika. belom semua arch punya semuanya:
+
+| optimasi | x86 | x64 | arm64 |
+|---|---|---|---|
+| bagi konstanta tanpa `idiv` | ada | ada | ada |
+| counter loop di register | ada | ada | ada |
+| kondisi tanpa cabang | ada | ada | ada |
+| cek index array dilewatin kalo kebukti aman | ada | ada | ada |
+| variabel di loop panas dipindah ke register | ada | ada | - |
+| bagi unsigned kalo nilainya kebukti ga negatif | ada | ada | - |
+| isi array pake `rep stosd` | ada | ada | - |
+| loop tandain sieve dengan cek batas sekali di depan | ada | ada | - |
+| ngitung nol pake SSE | ada | ada | - |
+| loop lcg jalan beberapa iterasi sekaligus | ada | ada | - |
+| unroll loop umum sama SIMD | - | ada | - |
+| loop yang diitung langsung pake rumus | - | ada | - |
+
+arm64 sekarang baru punya optimasi dasar, jadi program arm64 masih lebih lambat dari x86 sama x64.
 
 hasil bench di windows 32-bit (ms, ambil yang paling cepet, output semua bahasa sama persis):
 
 | bench | EnderScript | C | C++ | Zig |
 |---|---|---|---|---|
-| hello | 4.4 | 5.4 | 5.7 | 4.6 |
-| lcg | 112.3 | 143.7 | 143.1 | 224.8 |
-| fizz | 201.6 | 313.4 | 314.6 | 308.2 |
-| modchain | 280.2 | 368.8 | 367.6 | 364.6 |
-| sieve | 53.4 | 54.0 | 55.2 | 58.0 |
-| print | 23.1 | 100.0 | 107.1 | 24.3 |
-| pipe | 33.2 | 252.5 | 1505.1 | 35.0 |
+| hello | 4.2 | 5.2 | 5.4 | 4.6 |
+| lcg | 110.7 | 142.4 | 139.5 | 219.2 |
+| fizz | 197.6 | 306.9 | 306.2 | 303.7 |
+| modchain | 274.8 | 360.6 | 357.3 | 356.3 |
+| sieve | 50.5 | 52.9 | 53.1 | 56.4 |
+| print | 20.9 | 95.4 | 102.0 | 23.3 |
+| pipe | 30.9 | 243.3 | 1460.2 | 31.4 |
 
 hasil bench di windows x64 (ms, ambil yang paling cepet, output semua bahasa sama persis):
 
 | bench | EnderScript | C | C++ | Rust | Zig | Python |
 |---|---|---|---|---|---|---|
-| hello | 3.3 | 3.9 | 4.2 | 4.7 | 3.6 | 17.4 |
-| lcg | 155.6 | 691.7 | 680.3 | 178.2 | 173.6 | 30928.6 |
-| fizz | 186.1 | 577.9 | 579.3 | 264.2 | 278.1 | 16668.5 |
-| modchain | 237.1 | 371.9 | 369.0 | 390.2 | 413.4 | 11783.2 |
-| sieve | 50.1 | 53.1 | 53.2 | 51.2 | 52.8 | 2551.9 |
-| print | 11.2 | 66.7 | 33.6 | 21.6 | 12.0 | 577.4 |
-| pipe | 15.9 | 167.3 | 94.7 | 33.8 | 21.5 | 363.1 |
+| hello | 3.2 | 3.9 | 3.9 | 4.3 | 3.5 | 16.8 |
+| lcg | 151.9 | 177.5 | 176.1 | 175.0 | 172.9 | 30571.9 |
+| fizz | 175.7 | 264.8 | 263.3 | 260.5 | 277.1 | 17061.0 |
+| modchain | 235.8 | 388.4 | 384.3 | 393.0 | 416.5 | 12392.2 |
+| sieve | 50.7 | 51.7 | 51.2 | 51.2 | 53.2 | 2629.8 |
+| print | 11.3 | 69.4 | 83.4 | 21.6 | 12.0 | 583.4 |
+| pipe | 16.6 | 162.8 | 1081.6 | 34.3 | 20.3 | 352.2 |
 
-bench arm64 belom ada, nyusul abis dites di mesin arm beneran.
+C sama C++ di-build pake clang (`zig cc -O2`), Rust pake `rustc -C opt-level=3`, Zig pake `-O ReleaseFast`. source tiap bench, flag lengkap, sama script buat ngulang bench-nya ada di [enderscript-bench](https://github.com/iRELDevz/enderscript-bench). bench arm64 belom ada.
 
 ### kecil
 
@@ -443,6 +483,8 @@ bench arm64 belom ada, nyusul abis dites di mesin arm beneran.
 - tipe dicek sebelum program jalan.
 - pesan error ngasih tau file, baris, sama kolomnya.
 - int yang overflow selalu wrap, bagi nol dilaporin lengkap sama nomor barisnya.
+- file yang disimpen pake BOM UTF-8 (notepad, powershell 5.1) bisa dibaca.
+- `input` ga ada batas total ukurannya. satu baris maksimal 65535 byte.
 
 ### yang belom ada
 
@@ -460,7 +502,7 @@ linux nyusul.
 
 ## download
 
-ambil `ender.exe` yang sesuai mesin lo dari halaman [releases](https://github.com/iRELDevz/enderscript/releases), ga perlu install apa-apa. rilis 1.2.0 sekarang baru ada x86 sama x64, arm64 nyusul.
+ambil `ender.exe` yang sesuai mesin lo dari halaman [releases](https://github.com/iRELDevz/enderscript/releases), ga perlu install apa-apa. rilis sekarang baru ada x86 sama x64. arm64 udah bisa di-build tapi belom pernah dijalanin di mesin arm beneran, jadi belom dirilis.
 
 ## build sendiri
 
@@ -775,37 +817,56 @@ Copyright 2026 iRELDevz
 
 EnderScript はインタプリタ、VM、ガベージコレクタ、大きなランタイムなしで、直接機械語にコンパイルされます。コンパイラ自体はすべてアセンブリで書かれており、exe ファイルも自分で書き出すため、プログラムのビルドにアセンブラ、リンカ、その他のツールチェーンは不要です。
 
+> **注意:** `range(n)` は Python と違い **1 から n まで** (n を含む) 進みます。`for i in range(3):` では `i` は 1、2、3 になります。配列も 1 から始まります。
+
 ## なぜ EnderScript か
 
 ### 速い
 
-コンパイラはループと算術に特化した最適化を行います: `idiv` を使わない定数除算、レジスタに置かれるループカウンタ、分岐のない条件、SIMD、公式で直接計算されるループ、そしてよく使われるループパターン (配列の埋め込み、sieve、カウント、lcg) 専用のコード生成です。
+コンパイラはループと算術に特化した最適化を行います。すべてのアーキテクチャにすべてがあるわけではありません:
+
+| 最適化 | x86 | x64 | ARM64 |
+|---|---|---|---|
+| `idiv` を使わない定数除算 | あり | あり | あり |
+| レジスタに置かれるループカウンタ | あり | あり | あり |
+| 分岐のない条件 | あり | あり | あり |
+| 範囲内と証明できる配列インデックスのチェック省略 | あり | あり | あり |
+| ホットループ内の変数のレジスタ割り当て | あり | あり | - |
+| 非負と証明できる値の符号なし除算 | あり | あり | - |
+| `rep stosd` による配列の埋め込み | あり | あり | - |
+| 範囲チェックを 1 回にまとめた sieve の印付けループ | あり | あり | - |
+| SSE によるゼロのカウント | あり | あり | - |
+| 複数の反復をまとめて実行する LCG ループ | あり | あり | - |
+| 一般的なループ展開と SIMD | - | あり | - |
+| 公式で直接計算されるループ | - | あり | - |
+
+ARM64 は現在基本的な最適化のみのため、ARM64 のプログラムは x86 や x64 より遅くなります。
 
 Windows 32-bit でのベンチマーク結果 (ms、最速の実行、すべての言語で出力は完全に同じ):
 
 | ベンチマーク | EnderScript | C | C++ | Zig |
 |---|---|---|---|---|
-| hello | 4.4 | 5.4 | 5.7 | 4.6 |
-| lcg | 112.3 | 143.7 | 143.1 | 224.8 |
-| fizz | 201.6 | 313.4 | 314.6 | 308.2 |
-| modchain | 280.2 | 368.8 | 367.6 | 364.6 |
-| sieve | 53.4 | 54.0 | 55.2 | 58.0 |
-| print | 23.1 | 100.0 | 107.1 | 24.3 |
-| pipe | 33.2 | 252.5 | 1505.1 | 35.0 |
+| hello | 4.2 | 5.2 | 5.4 | 4.6 |
+| lcg | 110.7 | 142.4 | 139.5 | 219.2 |
+| fizz | 197.6 | 306.9 | 306.2 | 303.7 |
+| modchain | 274.8 | 360.6 | 357.3 | 356.3 |
+| sieve | 50.5 | 52.9 | 53.1 | 56.4 |
+| print | 20.9 | 95.4 | 102.0 | 23.3 |
+| pipe | 30.9 | 243.3 | 1460.2 | 31.4 |
 
 Windows x64 でのベンチマーク結果 (ms、最速の実行、すべての言語で出力は完全に同じ):
 
 | ベンチマーク | EnderScript | C | C++ | Rust | Zig | Python |
 |---|---|---|---|---|---|---|
-| hello | 3.3 | 3.9 | 4.2 | 4.7 | 3.6 | 17.4 |
-| lcg | 155.6 | 691.7 | 680.3 | 178.2 | 173.6 | 30928.6 |
-| fizz | 186.1 | 577.9 | 579.3 | 264.2 | 278.1 | 16668.5 |
-| modchain | 237.1 | 371.9 | 369.0 | 390.2 | 413.4 | 11783.2 |
-| sieve | 50.1 | 53.1 | 53.2 | 51.2 | 52.8 | 2551.9 |
-| print | 11.2 | 66.7 | 33.6 | 21.6 | 12.0 | 577.4 |
-| pipe | 15.9 | 167.3 | 94.7 | 33.8 | 21.5 | 363.1 |
+| hello | 3.2 | 3.9 | 3.9 | 4.3 | 3.5 | 16.8 |
+| lcg | 151.9 | 177.5 | 176.1 | 175.0 | 172.9 | 30571.9 |
+| fizz | 175.7 | 264.8 | 263.3 | 260.5 | 277.1 | 17061.0 |
+| modchain | 235.8 | 388.4 | 384.3 | 393.0 | 416.5 | 12392.2 |
+| sieve | 50.7 | 51.7 | 51.2 | 51.2 | 53.2 | 2629.8 |
+| print | 11.3 | 69.4 | 83.4 | 21.6 | 12.0 | 583.4 |
+| pipe | 16.6 | 162.8 | 1081.6 | 34.3 | 20.3 | 352.2 |
 
-ARM64 のベンチマークはまだありません。実機の ARM でテストした後に追加します。
+C と C++ は clang (`zig cc -O2`)、Rust は `rustc -C opt-level=3`、Zig は `-O ReleaseFast` でビルドしています。各ベンチマークのソース、正確なフラグ、再実行用のスクリプトは [enderscript-bench](https://github.com/iRELDevz/enderscript-bench) にあります。ARM64 のベンチマークはまだありません。
 
 ### 小さい
 
@@ -826,6 +887,8 @@ ARM64 のベンチマークはまだありません。実機の ARM でテスト
 - 型はプログラムの実行前にチェックされます。
 - エラーメッセージはファイル、行、列を示します。
 - int のオーバーフローは常にラップし、ゼロ除算は行番号付きで報告されます。
+- UTF-8 BOM 付きで保存されたファイル (メモ帳、PowerShell 5.1) も読み込めます。
+- `input` に合計サイズの上限はありません。1 行は最大 65535 バイトです。
 
 ### まだないもの
 
@@ -843,7 +906,7 @@ Linux は後日対応します。
 
 ## ダウンロード
 
-[releases](https://github.com/iRELDevz/enderscript/releases) ページから、お使いのマシンに合った `ender.exe` を入手してください。インストールは不要です。リリース 1.2.0 は現在 x86 と x64 のみで、ARM64 は後日追加します。
+[releases](https://github.com/iRELDevz/enderscript/releases) ページから、お使いのマシンに合った `ender.exe` を入手してください。インストールは不要です。リリースは現在 x86 と x64 のみです。ARM64 はビルドできますが、まだ実機の ARM で実行していないためリリースしていません。
 
 ## 自分でビルドする
 
@@ -1158,37 +1221,56 @@ Copyright 2026 iRELDevz
 
 EnderScript 直接编译为机器码，没有解释器、虚拟机、垃圾回收器或庞大的运行时。编译器本身完全用汇编语言编写，并且自己写出 exe 文件，因此构建程序不需要汇编器、链接器或其他工具链。
 
+> **注意:** 与 Python 不同，`range(n)` 从 **1 到 n** (包含 n)。`for i in range(3):` 中 `i` 依次为 1、2、3。数组也从 1 开始编号。
+
 ## 为什么选择 EnderScript
 
 ### 快
 
-编译器针对循环和算术做了专门优化: 不使用 `idiv` 的常量除法、保存在寄存器中的循环计数器、无分支条件、SIMD、用公式直接算出结果的循环，以及为常见循环模式 (数组填充、sieve、计数、lcg) 生成的专用代码。
+编译器针对循环和算术做了专门优化，但并非所有架构都已具备全部优化:
+
+| 优化 | x86 | x64 | ARM64 |
+|---|---|---|---|
+| 不使用 `idiv` 的常量除法 | 有 | 有 | 有 |
+| 循环计数器保存在寄存器中 | 有 | 有 | 有 |
+| 无分支条件 | 有 | 有 | 有 |
+| 可证明在范围内时跳过数组下标检查 | 有 | 有 | 有 |
+| 热循环中的变量提升到寄存器 | 有 | 有 | - |
+| 可证明非负时使用无符号除法 | 有 | 有 | - |
+| 用 `rep stosd` 填充数组 | 有 | 有 | - |
+| 只做一次范围检查的 sieve 标记循环 | 有 | 有 | - |
+| 用 SSE 统计零 | 有 | 有 | - |
+| 一次执行多次迭代的 LCG 循环 | 有 | 有 | - |
+| 通用循环展开和 SIMD | - | 有 | - |
+| 用公式直接计算的循环 | - | 有 | - |
+
+ARM64 目前只有基本优化，因此 ARM64 程序比 x86 和 x64 慢。
 
 Windows 32-bit 上的基准测试结果 (ms，取最快一次，所有语言的输出完全相同):
 
 | 基准测试 | EnderScript | C | C++ | Zig |
 |---|---|---|---|---|
-| hello | 4.4 | 5.4 | 5.7 | 4.6 |
-| lcg | 112.3 | 143.7 | 143.1 | 224.8 |
-| fizz | 201.6 | 313.4 | 314.6 | 308.2 |
-| modchain | 280.2 | 368.8 | 367.6 | 364.6 |
-| sieve | 53.4 | 54.0 | 55.2 | 58.0 |
-| print | 23.1 | 100.0 | 107.1 | 24.3 |
-| pipe | 33.2 | 252.5 | 1505.1 | 35.0 |
+| hello | 4.2 | 5.2 | 5.4 | 4.6 |
+| lcg | 110.7 | 142.4 | 139.5 | 219.2 |
+| fizz | 197.6 | 306.9 | 306.2 | 303.7 |
+| modchain | 274.8 | 360.6 | 357.3 | 356.3 |
+| sieve | 50.5 | 52.9 | 53.1 | 56.4 |
+| print | 20.9 | 95.4 | 102.0 | 23.3 |
+| pipe | 30.9 | 243.3 | 1460.2 | 31.4 |
 
 Windows x64 上的基准测试结果 (ms，取最快一次，所有语言的输出完全相同):
 
 | 基准测试 | EnderScript | C | C++ | Rust | Zig | Python |
 |---|---|---|---|---|---|---|
-| hello | 3.3 | 3.9 | 4.2 | 4.7 | 3.6 | 17.4 |
-| lcg | 155.6 | 691.7 | 680.3 | 178.2 | 173.6 | 30928.6 |
-| fizz | 186.1 | 577.9 | 579.3 | 264.2 | 278.1 | 16668.5 |
-| modchain | 237.1 | 371.9 | 369.0 | 390.2 | 413.4 | 11783.2 |
-| sieve | 50.1 | 53.1 | 53.2 | 51.2 | 52.8 | 2551.9 |
-| print | 11.2 | 66.7 | 33.6 | 21.6 | 12.0 | 577.4 |
-| pipe | 15.9 | 167.3 | 94.7 | 33.8 | 21.5 | 363.1 |
+| hello | 3.2 | 3.9 | 3.9 | 4.3 | 3.5 | 16.8 |
+| lcg | 151.9 | 177.5 | 176.1 | 175.0 | 172.9 | 30571.9 |
+| fizz | 175.7 | 264.8 | 263.3 | 260.5 | 277.1 | 17061.0 |
+| modchain | 235.8 | 388.4 | 384.3 | 393.0 | 416.5 | 12392.2 |
+| sieve | 50.7 | 51.7 | 51.2 | 51.2 | 53.2 | 2629.8 |
+| print | 11.3 | 69.4 | 83.4 | 21.6 | 12.0 | 583.4 |
+| pipe | 16.6 | 162.8 | 1081.6 | 34.3 | 20.3 | 352.2 |
 
-ARM64 的基准测试暂未提供，将在真实 ARM 机器上测试后补充。
+C 和 C++ 使用 clang (`zig cc -O2`) 构建，Rust 使用 `rustc -C opt-level=3`，Zig 使用 `-O ReleaseFast`。每个基准测试的源代码、完整编译参数和重新运行的脚本都在 [enderscript-bench](https://github.com/iRELDevz/enderscript-bench)。ARM64 的基准测试暂未提供。
 
 ### 小
 
@@ -1209,6 +1291,8 @@ ARM64 的基准测试暂未提供，将在真实 ARM 机器上测试后补充。
 - 程序运行前先检查类型。
 - 错误信息会给出文件、行和列。
 - int 溢出总是回绕，除以零会连同行号一起报告。
+- 支持带 UTF-8 BOM 保存的文件 (记事本、PowerShell 5.1)。
+- `input` 没有总大小限制，每行最多 65535 字节。
 
 ### 尚未支持
 
@@ -1226,7 +1310,7 @@ Linux 稍后支持。
 
 ## 下载
 
-从 [releases](https://github.com/iRELDevz/enderscript/releases) 页面下载适合你机器的 `ender.exe`，无需安装。1.2.0 版本目前提供 x86 和 x64，ARM64 稍后补充。
+从 [releases](https://github.com/iRELDevz/enderscript/releases) 页面下载适合你机器的 `ender.exe`，无需安装。目前发布版只提供 x86 和 x64。ARM64 可以构建，但尚未在真实 ARM 机器上运行，因此暂不发布。
 
 ## 自行构建
 
