@@ -2868,6 +2868,7 @@ emit_loop_head:
     mov dword [edi], 0
     add edi, 4
 .loops_top:
+    call align_top
     call x86_text_offset
     mov [esi + B_TOP], eax
     jmp .done
@@ -2901,6 +2902,7 @@ emit_loop_head:
     mov dword [edi], 0
     add edi, 4
 .for_top:
+    call align_top
     call x86_text_offset
     mov [esi + B_TOP], eax
     mov eax, [ebx + S_VAR]
@@ -2953,6 +2955,28 @@ emit_loop_head:
 .done:
     pop ebx
     pop esi
+    ret
+
+align_top:
+    call x86_text_offset
+    neg eax
+    and eax, 15
+    jz .r
+    cmp eax, 8
+    jb .small
+    mov dword [edi], 0x00841F0F
+    mov dword [edi + 4], 0
+    add edi, 8
+    sub eax, 8
+    jz .r
+.small:
+    lea ecx, [eax * 8 - 8]
+    mov edx, [nop_tab + ecx]
+    mov [edi], edx
+    mov edx, [nop_tab + ecx + 4]
+    mov [edi + 4], edx
+    add edi, eax
+.r:
     ret
 
 patch_initial:
@@ -5380,4 +5404,11 @@ s_too_large db "program too large", 0
 temp_codes db 5, 7, 6
 loop_regs  db 6, 7
 prom_regs  db 3, 7
+nop_tab    db 0x90, 0, 0, 0, 0, 0, 0, 0
+           db 0x66, 0x90, 0, 0, 0, 0, 0, 0
+           db 0x0F, 0x1F, 0x00, 0, 0, 0, 0, 0
+           db 0x0F, 0x1F, 0x40, 0x00, 0, 0, 0, 0
+           db 0x0F, 0x1F, 0x44, 0x00, 0x00, 0, 0, 0
+           db 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0, 0
+           db 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 0
 section .text
