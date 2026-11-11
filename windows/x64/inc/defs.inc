@@ -171,8 +171,10 @@ default rel
 %define RT_READFILE   40
 %define RT_STDIN      48
 %define RT_INPOS      56
+%define RT_RDBUF      64
+%define RT_VALLOC     72
 %define IN_SIZE       0x400000
-%define RT_BUF        64
+%define RT_BUF        80
 %define RT_BUF_SIZE   65536
 %define RT_VARS       (RT_BUF + RT_BUF_SIZE)
 

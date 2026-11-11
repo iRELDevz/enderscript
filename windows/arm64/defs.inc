@@ -166,6 +166,7 @@
 #define RT_STDIN      72
 #define RT_INPOS      80
 #define RT_INLEFT     88
+#define RT_VALLOC     96
 #define RT_VARS       128
 #define RT_BUF_SIZE   65536
 

@@ -15,8 +15,8 @@ argc resq 1
 argv resq MAX_ARGS
 
 section .rdata
-s_version   db "EnderScript 1.2.0 (Windows x64)", 13, 10, 0
-s_help      db "EnderScript 1.2.0 (Windows x64)", 13, 10, 13, 10
+s_version   db "EnderScript 1.2.1 (Windows x64)", 13, 10, 0
+s_help      db "EnderScript 1.2.1 (Windows x64)", 13, 10, 13, 10
             db "Usage:", 13, 10
             db "  ender <file.es>             Build into .ender\ and run", 13, 10
             db "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe", 13, 10
@@ -168,6 +168,15 @@ FUNC frontend
     lea rcx, [s_ext]
     call fatal
 .loaded:
+    cmp rdx, 3
+    jb .no_bom
+    mov ecx, [rax]
+    and ecx, 0xFFFFFF
+    cmp ecx, 0xBFBBEF
+    jne .no_bom
+    add rax, 3
+    sub rdx, 3
+.no_bom:
     mov [g_src], rax
     mov [g_src_len], rdx
     mov [g_file], r12

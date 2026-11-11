@@ -201,8 +201,31 @@ rt_read_line:
     ldr w9, [x28, #RT_INLEFT]
     mov w10, #65536
     cmp w9, w10
-    b.lo .Lrl_full
-    ldr x19, [x28, #RT_INPOS]
+    b.hs 3f
+#if defined(TARGET_WINDOWS)
+    mov x0, #0
+    mov x1, #IN_SIZE
+    mov x2, #0x3000
+    mov x3, #4
+    ldr x16, [x28, #RT_VALLOC]
+    blr x16
+#else
+    mov x0, #0
+    mov x1, #IN_SIZE
+    mov x2, #3
+    mov x3, #0x22
+    mov x4, #-1
+    mov x5, #0
+    mov x8, #222
+    svc #0
+    cmn x0, #4096
+    b.hi .Lrl_full
+#endif
+    cbz x0, .Lrl_full
+    str x0, [x28, #RT_INPOS]
+    mov w9, #IN_SIZE
+    str w9, [x28, #RT_INLEFT]
+3:  ldr x19, [x28, #RT_INPOS]
     mov x20, #0
     mov w21, #0
 1:

@@ -174,6 +174,8 @@ bits 32
 %define RT_STDIN      36
 %define RT_INPOS      40
 %define RT_INLEFT     44
+%define RT_RDBUF      48
+%define RT_VALLOC     52
 %define IN_SIZE       0x400000
 %define RD_SIZE       262144
 %define RT_BUF        64

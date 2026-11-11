@@ -19,8 +19,8 @@ syn_only resd 1
 file_idx resd 1
 
 section .rdata
-s_version   db "EnderScript 1.2.0 (Windows x32)", 13, 10, 0
-s_help      db "EnderScript 1.2.0 (Windows x32)", 13, 10, 13, 10
+s_version   db "EnderScript 1.2.1 (Windows x32)", 13, 10, 0
+s_help      db "EnderScript 1.2.1 (Windows x32)", 13, 10, 13, 10
             db "Usage:", 13, 10
             db "  ender <file.es>             Build into .ender\ and run", 13, 10
             db "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe", 13, 10
@@ -180,6 +180,15 @@ FUNC frontend
     mov ecx, s_ext
     call fatal
 .loaded:
+    cmp edx, 3
+    jb .no_bom
+    mov ecx, [eax]
+    and ecx, 0xFFFFFF
+    cmp ecx, 0xBFBBEF
+    jne .no_bom
+    add eax, 3
+    sub edx, 3
+.no_bom:
     mov [g_src], eax
     mov [g_src_len], edx
     mov [g_file], esi

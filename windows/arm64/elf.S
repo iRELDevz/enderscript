@@ -8,9 +8,10 @@
 
     .bss
     .p2align 3
-    .globl g_image, g_image_size
+    .globl g_image, g_image_size, g_image_lim
 g_image:      .zero 8
 g_image_size: .zero 8
+g_image_lim:  .zero 8
 el_data_vsz:  .zero 8
 
     .text
@@ -46,8 +47,13 @@ FUNC img_layout
     add x0, x0, x9
     add x0, x0, #4096
     add x0, x0, x10
+    sub x9, x0, #1024
+    STX x9, g_image_lim
     bl mem_alloc
     STX x0, g_image
+    LDX x9, g_image_lim
+    add x9, x9, x0
+    STX x9, g_image_lim
     add x9, x0, #HDR_SIZE
     LA x10, rt_consts
     mov x11, #RC_SIZE

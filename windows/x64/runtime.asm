@@ -256,9 +256,19 @@ rt_read_line:
     mov r12d, edx
     mov eax, [r15 + RT_INLEFT]
     cmp eax, 65536
-    jb .full
+    jae .room
+    xor ecx, ecx
+    mov edx, IN_SIZE
+    mov r8d, 0x3000
+    mov r9d, 4
+    call [r15 + RT_VALLOC]
+    test rax, rax
+    jz .full
+    mov [r15 + RT_INPOS], rax
+    mov dword [r15 + RT_INLEFT], IN_SIZE
+.room:
     mov rdi, [r15 + RT_INPOS]
-    lea r13, [rdi + rax]
+    mov r13, [r15 + RT_RDBUF]
     xor esi, esi
     xor ebx, ebx
 .scan:
@@ -347,9 +357,7 @@ rt_input_str:
     ret
 
 rt_input_int:
-    mov eax, [r15 + RT_INLEFT]
-    mov r8, [r15 + RT_INPOS]
-    add r8, rax
+    mov r8, [r15 + RT_RDBUF]
     mov ecx, [r8]
     mov r11d, [r8 + 4]
     mov r9d, edx
