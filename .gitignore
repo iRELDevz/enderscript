@@ -4,5 +4,3 @@
 /ender.exe
 *.o
 *.a
-/tests/out/
-/tests/build/

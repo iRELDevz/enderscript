@@ -1,3 +1,0 @@
-loops(a,
-print>>"x"
-)
