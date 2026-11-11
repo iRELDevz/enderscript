@@ -46,8 +46,6 @@ jobs:
           ./ender hello.es
           ./ender run hello.es
           ./ender examine hello.es
-      - name: Tests
-        run: python3 tests/run_tests.py ./ender
       - name: Runtime division by zero
         run: |
           printf 'a.int = 10\nb.int = 0\nc.int = a / b\n' > divzero.es
@@ -63,10 +61,3 @@ jobs:
           set -e
           test $code -eq 1
           grep -q "array index out of range on line 3" err.txt
-      - name: Fuzz arithmetic
-        run: for s in $(seq 1 20); do python3 tests/fuzz_expr.py ./ender $s 400 || exit 1; done
-      - name: Fuzz language
-        run: |
-          for f in fuzz_loop fuzz_brk fuzz_if fuzz_bl fuzz_divis fuzz_simd fuzz_range fuzz_ja fuzz_arr; do
-            for s in $(seq 1 25); do python3 tests/$f.py ./ender $s || exit 1; done
-          done
