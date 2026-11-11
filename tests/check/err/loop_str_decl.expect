@@ -1,0 +1,1 @@
+loop_str_decl.es:2:3: semantic error: cannot declare str variable 's' inside a loop

@@ -1,0 +1,1 @@
+if_undeclared.es:3:3: semantic error: variable 'baru' must be declared before the if block
