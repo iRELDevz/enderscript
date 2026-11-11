@@ -1,0 +1,1 @@
+type_bool_to_str.es:2:5: type error: cannot assign bool to str variable 'a'

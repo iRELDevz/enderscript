@@ -1,0 +1,1 @@
+type_str_to_int.es:1:9: type error: cannot assign str to int variable 'a'

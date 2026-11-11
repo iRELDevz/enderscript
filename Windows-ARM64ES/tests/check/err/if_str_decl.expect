@@ -1,0 +1,1 @@
+if_str_decl.es:3:3: semantic error: cannot declare str variable 'nama' inside an if block

@@ -1,0 +1,86 @@
+name: windows-arm64
+
+on:
+  push:
+    paths:
+      - 'Windows-ARM64ES/**'
+      - '.github/workflows/windows-arm64.yml'
+  pull_request:
+    paths:
+      - 'Windows-ARM64ES/**'
+      - '.github/workflows/windows-arm64.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: Windows-ARM64ES
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build compiler
+        shell: pwsh
+        run: ./build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ender-windows-arm64
+          path: Windows-ARM64ES/ender.exe
+
+  test:
+    needs: build
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ender-windows-arm64
+          path: Windows-ARM64ES
+      - name: Version
+        shell: pwsh
+        run: ./ender.exe --version
+      - name: Hello world
+        shell: pwsh
+        run: |
+          Set-Content -Path hello.es -Value 'print>>"Hello World"' -NoNewline
+          ./ender.exe hello.es
+          ./ender.exe run hello.es
+          ./ender.exe examine hello.es
+      - name: Tests
+        shell: pwsh
+        run: ./tests/run_tests.ps1 -Compiler ./ender.exe
+      - name: Runtime division by zero
+        shell: pwsh
+        run: |
+          Set-Content -Path divzero.es -Value "a.int = 10`nb.int = 0`nc.int = a / b`n" -NoNewline
+          ./ender.exe divzero.es
+          if ($LASTEXITCODE -ne 1) { exit 1 } else { exit 0 }
+      - name: Runtime array index
+        shell: pwsh
+        run: |
+          Set-Content -Path badidx.es -Value "a.int[3] = 1, 2, 3`ni.int = 4`nprint>>a[i]`n" -NoNewline
+          ./ender.exe badidx.es 2> err.txt
+          if ($LASTEXITCODE -ne 1) { exit 1 }
+          if (-not (Select-String -Path err.txt -Pattern 'array index out of range on line 3' -Quiet)) { exit 1 }
+          exit 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: arm64
+      - name: Fuzz arithmetic
+        shell: pwsh
+        run: |
+          foreach ($s in 1..20) {
+            python tests/fuzz_expr.py ./ender.exe $s 400
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+      - name: Fuzz language
+        shell: pwsh
+        run: |
+          foreach ($f in @('fuzz_loop', 'fuzz_brk', 'fuzz_if', 'fuzz_bl', 'fuzz_divis', 'fuzz_simd', 'fuzz_range', 'fuzz_ja', 'fuzz_arr')) {
+            foreach ($s in 1..25) {
+              python tests/$f.py ./ender.exe $s
+              if ($LASTEXITCODE -ne 0) { exit 1 }
+            }
+          }

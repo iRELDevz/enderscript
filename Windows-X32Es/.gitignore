@@ -1,0 +1,5 @@
+/build/
+/.ender/
+*.exe
+*.obj
+*.a

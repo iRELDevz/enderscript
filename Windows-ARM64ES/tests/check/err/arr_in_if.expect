@@ -1,0 +1,1 @@
+arr_in_if.es:3:3: semantic error: cannot declare array 'a' inside an if block

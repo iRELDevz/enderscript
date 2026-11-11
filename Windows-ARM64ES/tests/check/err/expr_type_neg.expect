@@ -1,0 +1,1 @@
+expr_type_neg.es:2:9: type error: operator '-' needs an int operand, got bool

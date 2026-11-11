@@ -1,0 +1,1 @@
+arr_need_index.es:2:8: semantic error: array 'a' needs an index, like a[1]

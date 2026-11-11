@@ -1,0 +1,72 @@
+name: linux-arm64
+
+on:
+  push:
+    paths:
+      - 'Linux-ARM64ES/**'
+      - '.github/workflows/linux-arm64.yml'
+  pull_request:
+    paths:
+      - 'Linux-ARM64ES/**'
+      - '.github/workflows/linux-arm64.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: Linux-ARM64ES
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang lld
+      - name: Build compiler
+        run: ./build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ender-linux-arm64
+          path: Linux-ARM64ES/ender
+
+  test:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ender-linux-arm64
+          path: Linux-ARM64ES
+      - name: Version
+        run: chmod +x ender && ./ender --version
+      - name: Hello world
+        run: |
+          printf 'print>>"Hello World"' > hello.es
+          ./ender hello.es
+          ./ender run hello.es
+          ./ender examine hello.es
+      - name: Tests
+        run: python3 tests/run_tests.py ./ender
+      - name: Runtime division by zero
+        run: |
+          printf 'a.int = 10\nb.int = 0\nc.int = a / b\n' > divzero.es
+          set +e
+          ./ender divzero.es
+          test $? -eq 1
+      - name: Runtime array index
+        run: |
+          printf 'a.int[3] = 1, 2, 3\ni.int = 4\nprint>>a[i]\n' > badidx.es
+          set +e
+          ./ender badidx.es 2> err.txt
+          code=$?
+          set -e
+          test $code -eq 1
+          grep -q "array index out of range on line 3" err.txt
+      - name: Fuzz arithmetic
+        run: for s in $(seq 1 20); do python3 tests/fuzz_expr.py ./ender $s 400 || exit 1; done
+      - name: Fuzz language
+        run: |
+          for f in fuzz_loop fuzz_brk fuzz_if fuzz_bl fuzz_divis fuzz_simd fuzz_range fuzz_ja fuzz_arr; do
+            for s in $(seq 1 25); do python3 tests/$f.py ./ender $s || exit 1; done
+          done
