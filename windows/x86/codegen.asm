@@ -6,7 +6,8 @@ extern x86_text_base, x86_bytes, x86_imm32, x86_imm16, x86_imm8, x86_op_abs
 extern x86_call_rel, x86_text_offset
 extern elem_size
 extern pe_layout, pe_finish
-extern pe_R, pe_D, pe_I, pe_T, pe_entry, pe_text_file, g_image
+extern pe_R, pe_D, pe_I, pe_T, pe_entry, pe_text_file, g_image, g_image_lim
+extern fatal
 
 %define IMAGE_BASE       0x400000
 %define RT_FN_WRITE      0
@@ -21,10 +22,11 @@ extern pe_R, pe_D, pe_I, pe_T, pe_entry, pe_text_file, g_image
 %define RT_FN_INDEX      36
 %define RT_FN_WRITE_INT_SFX 40
 
-%define IAT_GETSTDHANDLE 60
-%define IAT_WRITEFILE    64
-%define IAT_EXITPROCESS  68
-%define IAT_READFILE     72
+%define IAT_GETSTDHANDLE 64
+%define IAT_WRITEFILE    68
+%define IAT_EXITPROCESS  72
+%define IAT_READFILE     76
+%define IAT_VALLOC       80
 
 %define R_EAX 0
 %define R_ECX 1
@@ -295,9 +297,18 @@ FUNC codegen
     add edx, IMAGE_BASE + IAT_READFILE
     OPA 0xA1, 1, edx
     OPA 0xA3, 1, RT_BASE + RT_READFILE
+    mov edx, [pe_I]
+    add edx, IMAGE_BASE + IAT_VALLOC
+    OPA 0xA1, 1, edx
+    OPA 0xA3, 1, RT_BASE + RT_VALLOC
     OPA 0x05C7, 2, RT_BASE + RT_INPOS
     mov edx, [cg_vars]
     add edx, [cg_inoff]
+    call x86_imm32
+    OPA 0x05C7, 2, RT_BASE + RT_RDBUF
+    mov edx, [cg_vars]
+    add edx, [cg_inoff]
+    add edx, IN_SIZE
     call x86_imm32
     OPA 0x05C7, 2, RT_BASE + RT_INLEFT
     mov edx, IN_SIZE
@@ -310,6 +321,8 @@ FUNC codegen
     add eax, esi
     mov [cg_end], eax
 .stmt:
+    cmp edi, [g_image_lim]
+    jae .too_large
     mov [cg_cur], esi
     mov eax, esi
     sub eax, [g_stmts]
@@ -431,6 +444,9 @@ FUNC codegen
     add esi, S_SIZE
     jmp .stmt
 
+.too_large:
+    mov ecx, s_too_large
+    call fatal
 .epilogue:
     CALL_RT RT_FN_FLUSH
     BYTES 0x006A, 2
@@ -5360,6 +5376,7 @@ emit_adecl:
     jmp x86_imm8
 
 section .rdata
+s_too_large db "program too large", 0
 temp_codes db 5, 7, 6
 loop_regs  db 6, 7
 prom_regs  db 3, 7

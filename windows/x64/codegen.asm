@@ -7,7 +7,8 @@ extern x64_call_rel, x64_text_offset
 extern pe_layout, pe_finish
 extern pool_compact
 extern elem_size
-extern pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image
+extern pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image, g_image_lim
+extern fatal
 
 %define RT_FN_WRITE      0
 %define RT_FN_WRITE_INT  4
@@ -21,10 +22,11 @@ extern pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image
 %define RT_FN_INDEX      36
 %define RT_FN_WRITE_INT_SFX 40
 
-%define IAT_GETSTDHANDLE 80
-%define IAT_WRITEFILE    88
-%define IAT_EXITPROCESS  96
-%define IAT_READFILE     104
+%define IAT_GETSTDHANDLE 88
+%define IAT_WRITEFILE    96
+%define IAT_EXITPROCESS  104
+%define IAT_READFILE     112
+%define IAT_VALLOC       120
 
 section .bss
 alignb 4
@@ -289,6 +291,13 @@ FUNC codegen
     lea r13d, [r12d + IAT_READFILE]
     OPD 0x878B49, 3, r13d
     BYTES 0x28478949, 4
+    lea r13d, [r12d + IAT_VALLOC]
+    OPD 0x878B49, 3, r13d
+    BYTES 0x48478949, 4
+    mov r13, [cg_inoff]
+    lea r13d, [r13d + IN_SIZE]
+    OPD 0x878D49, 3, r13d
+    BYTES 0x40478949, 4
     mov r13, [cg_inoff]
     OPD 0x878D49, 3, r13d
     BYTES 0x38478949, 4
@@ -304,6 +313,8 @@ FUNC codegen
     shl r13, 5
     add r13, r12
 .stmt:
+    cmp rdi, [g_image_lim]
+    jae .too_large
     mov rax, r12
     sub rax, [g_stmts]
     shr rax, 5
@@ -447,6 +458,9 @@ FUNC codegen
     add r12, S_SIZE
     jmp .stmt
 
+.too_large:
+    lea rcx, [s_too_large]
+    call fatal
 .epilogue:
     CALL_RT RT_FN_FLUSH
     BYTES 0xC931, 2
@@ -6228,21 +6242,45 @@ try_count:
     BYTES 0xC031, 2
     jmp .tail
 .vec:
-    ; pxor xmm0,xmm0 ; pxor xmm1,xmm1 ; mov edx,q
     mov rax, 0xC9EF0F66C0EF0F66
     mov r8d, 8
     call x64_bytes
+    BYTES 0xDBEF0F66, 4
+    mov eax, ebp
+    shr eax, 2
+    jz .vec1
+    BYTES 0xBA, 1
+    mov edx, ebp
+    shr edx, 2
+    call x64_imm32
+    BYTES 0x116F0FF3, 4
+    BYTES 0x10616F0FF3, 5
+    BYTES 0x20696F0FF3, 5
+    BYTES 0x30716F0FF3, 5
+    BYTES 0xD1760F66, 4
+    BYTES 0xE1760F66, 4
+    BYTES 0xE9760F66, 4
+    BYTES 0xF1760F66, 4
+    BYTES 0xC2FA0F66, 4
+    BYTES 0xDCFA0F66, 4
+    BYTES 0xC5FA0F66, 4
+    BYTES 0xDEFA0F66, 4
+    BYTES 0x40C18348, 4
+    BYTES 0xCAFF, 2
+    BYTES 0xC575, 2
+.vec1:
+    and ebp, 3
+    jz .vec_sum
     BYTES 0xBA, 1
     mov edx, ebp
     call x64_imm32
-    ; L: movdqu xmm2,[rcx] ; pcmpeqd xmm2,xmm1 ; psubd xmm0,xmm2
-    ;    add rcx,16 ; dec edx ; jnz L
     BYTES 0x116F0FF3, 4
     BYTES 0xD1760F66, 4
     BYTES 0xC2FA0F66, 4
     BYTES 0x10C18348, 4
     BYTES 0xEC75CAFF, 4
-    ; pshufd xmm1,xmm0,4E ; paddd xmm0,xmm1 ; pshufd xmm1,xmm0,B1 ; paddd ; movd eax,xmm0
+.vec_sum:
+    BYTES 0xC3FE0F66, 4
     BYTES 0x4EC8700F66, 5
     BYTES 0xC1FE0F66, 4
     BYTES 0xB1C8700F66, 5
@@ -7396,6 +7434,7 @@ emit_adecl:
     jmp x64_imm8
 
 section .rdata
+s_too_large db "program too large", 0
 loop_regs db 3, 6, 7, 12, 13, 14, 5
 ja_factors db 8, 4, 6, 5, 3, 2, 0
 sv_xfree   db 1, 2, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15

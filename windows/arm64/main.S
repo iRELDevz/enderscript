@@ -11,8 +11,8 @@ out_path: .zero 8
     RODATA
 #if defined(TARGET_WINDOWS)
 #define NL "\r\n"
-s_version: .asciz "EnderScript 1.2.0 (Windows ARM64)\r\n"
-s_help:    .ascii "EnderScript 1.2.0 (Windows ARM64)\r\n\r\n"
+s_version: .asciz "EnderScript 1.2.1 (Windows ARM64)\r\n"
+s_help:    .ascii "EnderScript 1.2.1 (Windows ARM64)\r\n\r\n"
            .ascii "Usage:\r\n"
            .ascii "  ender <file.es>             Build into .ender\\ and run\r\n"
            .ascii "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe\r\n"
@@ -24,8 +24,8 @@ s_ender_pre: .asciz ".\\.ender\\"
 s_first:     .asciz "' first\r\n"
 s_exe:       .asciz ".exe"
 #else
-s_version: .asciz "EnderScript 1.2.0 (Linux ARM64)\n"
-s_help:    .ascii "EnderScript 1.2.0 (Linux ARM64)\n\n"
+s_version: .asciz "EnderScript 1.2.1 (Linux ARM64)\n"
+s_help:    .ascii "EnderScript 1.2.1 (Linux ARM64)\n\n"
            .ascii "Usage:\n"
            .ascii "  ender <file.es>             Build into .ender/ and run\n"
            .ascii "  ender examine <file.es>     Check the whole program, including code generation, without writing an exe\n"
@@ -176,6 +176,20 @@ FUNC frontend
     LA x0, s_ext
     bl fatal
 .Lfe_loaded:
+    cmp x1, #3
+    b.lo .Lfe_nobom
+    ldrb w9, [x0]
+    ldrb w10, [x0, #1]
+    ldrb w11, [x0, #2]
+    orr w9, w9, w10, lsl #8
+    orr w9, w9, w11, lsl #16
+    mov w10, #0xBBEF
+    movk w10, #0xBF, lsl #16
+    cmp w9, w10
+    b.ne .Lfe_nobom
+    add x0, x0, #3
+    sub x1, x1, #3
+.Lfe_nobom:
     STX x0, g_src
     STX x1, g_src_len
     STX x19, g_file

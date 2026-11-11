@@ -296,9 +296,19 @@ rt_read_line:
     mov [esp + 12], edx
     mov eax, [RT_BASE + RT_INLEFT]
     cmp eax, 65536
-    jb .full
+    jae .room
+    push 4
+    push 0x3000
+    push IN_SIZE
+    push 0
+    call [RT_BASE + RT_VALLOC]
+    test eax, eax
+    jz .full
+    mov [RT_BASE + RT_INPOS], eax
+    mov dword [RT_BASE + RT_INLEFT], IN_SIZE
+.room:
     mov edi, [RT_BASE + RT_INPOS]
-    lea ebp, [edi + eax]
+    mov ebp, [RT_BASE + RT_RDBUF]
     xor esi, esi
     mov dword [esp + 8], 0
 .scan:
@@ -391,8 +401,7 @@ rt_input_int:
     push edi
     push ebp
     push edx
-    mov esi, [RT_BASE + RT_INPOS]
-    add esi, [RT_BASE + RT_INLEFT]
+    mov esi, [RT_BASE + RT_RDBUF]
     mov ecx, [esi]
     mov edi, [esi + 4]
     xor edx, edx

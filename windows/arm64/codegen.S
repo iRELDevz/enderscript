@@ -36,6 +36,9 @@
 #define B_GIDX     48
 #define B_SIZE     64
 
+    RODATA
+s_too_large: .asciz "program too large"
+
     .globl img_R_va, img_D_va, img_T_va, img_T_off, img_entry, img_bufoff, img_iat_va
     .bss
     .p2align 3
@@ -228,6 +231,11 @@ FUNC codegen
     add x1, x1, #24
     bl e_ldr_va
     LDST OP_STR_X, 16, 28, 8
+    mov w0, #16
+    LDX x1, img_iat_va
+    add x1, x1, #32
+    bl e_ldr_va
+    LDST OP_STR_X, 16, 28, 12
 #endif
     mov w0, #9
     LDX x1, cg_inoff
@@ -244,6 +252,9 @@ FUNC codegen
     add x20, x19, x20, lsl #5
     STX x20, cg_end
 .Lcg_stmt:
+    LDX x9, g_image_lim
+    cmp x27, x9
+    b.hs .Lcg_too_large
     STX x19, cg_cur
     LDX x9, g_stmts
     sub x0, x19, x9
@@ -341,6 +352,9 @@ FUNC codegen
     add x19, x19, #32
     b .Lcg_stmt
 
+.Lcg_too_large:
+    LA x0, s_too_large
+    bl fatal
 .Lcg_epilogue:
     CALL_RT RT_FN_FLUSH
 #if defined(TARGET_WINDOWS)

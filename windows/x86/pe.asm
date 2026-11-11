@@ -5,11 +5,11 @@ extern rt_size, rt_consts
 
 %define FILE_ALIGN  0x200
 %define SECT_ALIGN  0x1000
-%define IDATA_SIZE  160
+%define IDATA_SIZE  176
 %define IMAGE_BASE  0x400000
 
 section .bss
-global pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image, g_image_size
+global pe_R, pe_D, pe_I, pe_T, pe_text_file, pe_entry, g_image, g_image_size, g_image_lim
 alignb 4
 pe_R          resd 1
 pe_D          resd 1
@@ -23,10 +23,11 @@ pe_text_file  resd 1
 pe_entry      resd 1
 g_image       resd 1
 g_image_size  resd 1
+g_image_lim   resd 1
 
 section .rdata
 idata_tpl:
-    times 80 db 0
+    times 88 db 0
     dw 0
     db "GetStdHandle", 0
     db 0
@@ -37,9 +38,11 @@ idata_tpl:
     dw 0
     db "ReadFile", 0
     db 0
-    db "kernel32.dll", 0
+    dw 0
+    db "VirtualAlloc", 0
     db 0
-    times 12 db 0
+    db "kernel32.dll", 0
+    times 5 db 0
 
 section .text
 
@@ -84,8 +87,12 @@ FUNC pe_layout
     add ecx, [rt_size]
     add ecx, 4096
     add ecx, eax
+    push ecx
     call mem_alloc
+    pop ecx
     mov [g_image], eax
+    lea ecx, [eax + ecx - 1024]
+    mov [g_image_lim], ecx
     lea edi, [eax + FILE_ALIGN]
     mov esi, rt_consts
     mov ecx, RC_SIZE
@@ -150,9 +157,9 @@ FUNC pe_finish, 8
     mov eax, [pe_I]
     mov [esi + 104], eax
     mov dword [esi + 108], 40
-    add eax, 60
+    add eax, 64
     mov [esi + 192], eax
-    mov dword [esi + 196], 20
+    mov dword [esi + 196], 24
 
     lea esi, [ebx + 0x138]
     mov dword [esi], 0x7461642E
@@ -208,20 +215,23 @@ FUNC pe_finish, 8
     mov eax, [pe_I]
     lea ecx, [eax + 40]
     mov [edx], ecx
-    lea ecx, [eax + 134]
+    lea ecx, [eax + 158]
     mov [edx + 12], ecx
-    lea ecx, [eax + 60]
+    lea ecx, [eax + 64]
     mov [edx + 16], ecx
-    lea ecx, [eax + 80]
+    lea ecx, [eax + 88]
     mov [edx + 40], ecx
-    mov [edx + 60], ecx
-    lea ecx, [eax + 96]
-    mov [edx + 44], ecx
     mov [edx + 64], ecx
-    lea ecx, [eax + 108]
-    mov [edx + 48], ecx
+    lea ecx, [eax + 104]
+    mov [edx + 44], ecx
     mov [edx + 68], ecx
-    lea ecx, [eax + 122]
-    mov [edx + 52], ecx
+    lea ecx, [eax + 116]
+    mov [edx + 48], ecx
     mov [edx + 72], ecx
+    lea ecx, [eax + 130]
+    mov [edx + 52], ecx
+    mov [edx + 76], ecx
+    lea ecx, [eax + 142]
+    mov [edx + 56], ecx
+    mov [edx + 80], ecx
     ENDF

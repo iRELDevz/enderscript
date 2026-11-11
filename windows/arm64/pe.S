@@ -4,14 +4,15 @@
 
 #define FILE_ALIGN  0x200
 #define SECT_ALIGN  0x1000
-#define IDATA_SIZE  208
+#define IDATA_SIZE  240
 #define IMAGE_BASE  0x140000000
 
     .bss
     .p2align 3
-    .globl g_image, g_image_size
+    .globl g_image, g_image_size, g_image_lim
 g_image:       .zero 8
 g_image_size:  .zero 8
+g_image_lim:   .zero 8
 pe_R:          .zero 8
 pe_D:          .zero 8
 pe_I:          .zero 8
@@ -23,7 +24,7 @@ pe_idata_file: .zero 8
 
     RODATA
 idata_tpl:
-    .zero 120
+    .zero 136
     .short 0
     .asciz "GetStdHandle"
     .byte 0
@@ -34,9 +35,11 @@ idata_tpl:
     .short 0
     .asciz "ReadFile"
     .byte 0
-    .asciz "kernel32.dll"
+    .short 0
+    .asciz "VirtualAlloc"
     .byte 0
-    .zero 20
+    .asciz "kernel32.dll"
+    .zero 21
 
     .text
 
@@ -87,7 +90,7 @@ FUNC img_layout
     STX x9, img_T_va
     LDX x9, pe_I
     add x9, x9, x13
-    add x9, x9, #80
+    add x9, x9, #88
     STX x9, img_iat_va
 
     LDX x0, g_nstmt
@@ -101,8 +104,13 @@ FUNC img_layout
     add x0, x0, x9
     add x0, x0, #4096
     add x0, x0, x12
+    sub x9, x0, #1024
+    STX x9, g_image_lim
     bl mem_alloc
     STX x0, g_image
+    LDX x9, g_image_lim
+    add x9, x9, x0
+    STX x9, g_image_lim
     add x9, x0, #FILE_ALIGN
     LA x10, rt_consts
     mov x11, #RC_SIZE
@@ -193,13 +201,13 @@ FUNC img_finish
     str w10, [x22, #120]
     mov w11, #40
     str w11, [x22, #124]
-    add w11, w10, #192
+    add w11, w10, #224
     str w11, [x22, #152]
     mov w11, #12
     str w11, [x22, #156]
-    add w11, w10, #80
+    add w11, w10, #88
     str w11, [x22, #208]
-    mov w11, #40
+    mov w11, #48
     str w11, [x22, #212]
 
     add x22, x21, #0x148
@@ -272,26 +280,29 @@ FUNC img_finish
     LDX x10, pe_I
     add w11, w10, #40
     str w11, [x22]
-    add w11, w10, #174
+    add w11, w10, #206
     str w11, [x22, #12]
-    add w11, w10, #80
+    add w11, w10, #88
     str w11, [x22, #16]
-    add x11, x10, #120
-    str x11, [x22, #40]
-    str x11, [x22, #80]
     add x11, x10, #136
-    str x11, [x22, #48]
+    str x11, [x22, #40]
     str x11, [x22, #88]
-    add x11, x10, #148
-    str x11, [x22, #56]
+    add x11, x10, #152
+    str x11, [x22, #48]
     str x11, [x22, #96]
-    add x11, x10, #162
-    str x11, [x22, #64]
+    add x11, x10, #164
+    str x11, [x22, #56]
     str x11, [x22, #104]
+    add x11, x10, #178
+    str x11, [x22, #64]
+    str x11, [x22, #112]
+    add x11, x10, #190
+    str x11, [x22, #72]
+    str x11, [x22, #120]
     LDX x11, pe_T
-    str w11, [x22, #192]
+    str w11, [x22, #224]
     mov w11, #12
-    str w11, [x22, #196]
+    str w11, [x22, #228]
     ENDF
 
 #endif
