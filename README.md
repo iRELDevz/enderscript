@@ -34,6 +34,34 @@ The compiler applies optimizations aimed at loops and arithmetic. Not every arch
 
 ARM64 currently has only the basic optimizations, so ARM64 programs are slower than x86 and x64.
 
+### Honest numbers
+
+EnderScript wins on the benchmarks below because the compiler has dedicated optimizations for exactly these loop patterns (array fill, sieve, counting, LCG, print/read loops). On ordinary code it is still clearly slower than C, C++, Rust, and Zig. These three programs were never tuned for:
+
+- `gcd`: Euclid's algorithm over every pair from 1 to 3000
+- `collatz`: Collatz step counts for 1 to 100000, 20 times
+- `matrix`: 200x200 integer matrix multiply with nested loops over arrays, 30 times
+
+Windows 32-bit (ms, fastest run):
+
+| Benchmark | EnderScript | C | C++ | Zig |
+|---|---|---|---|---|
+| gcd | 691.3 | 391.0 | 395.3 | 352.5 |
+| collatz | 669.2 | 319.3 | 315.5 | 348.3 |
+| matrix | 280.3 | 61.9 | 58.8 | 90.8 |
+
+Windows x64 (ms, fastest run; Python measured once):
+
+| Benchmark | EnderScript | C | C++ | Rust | Zig | Python |
+|---|---|---|---|---|---|---|
+| gcd | 436.7 | 330.7 | 330.6 | 310.6 | 254.6 | 22900 |
+| collatz | 445.6 | 315.7 | 316.9 | 306.9 | 287.2 | 31100 |
+| matrix | 238.8 | 58.3 | 57.6 | 59.6 | 56.7 | 39000 |
+
+EnderScript is 1.3 to 4.5 times slower than C here. General code generation (register allocation, instruction selection, array indexing in nested loops) is the next thing to improve.
+
+Benchmarks where the dedicated optimizations apply:
+
 Benchmark results on Windows 32-bit (ms, fastest run, every language produces exactly the same output):
 
 | Benchmark | EnderScript | C | C++ | Zig |
@@ -437,6 +465,34 @@ compilernya punya optimasi khusus buat loop sama aritmetika. belom semua arch pu
 | loop yang diitung langsung pake rumus | - | ada | - |
 
 arm64 sekarang baru punya optimasi dasar, jadi program arm64 masih lebih lambat dari x86 sama x64.
+
+### angka yang jujur
+
+EnderScript menang di bench bawah karena compilernya punya optimasi khusus buat pola loop itu (isi array, sieve, hitung, lcg, loop print/baca). buat kode biasa, EnderScript masih jelas lebih lambat dari C, C++, Rust, sama Zig. tiga program ini ga pernah di-tuning sama sekali:
+
+- `gcd`: algoritma euclid buat semua pasangan 1 sampe 3000
+- `collatz`: ngitung langkah collatz buat 1 sampe 100000, diulang 20 kali
+- `matrix`: perkalian matriks int 200x200 pake loop nested di array, diulang 30 kali
+
+windows 32-bit (ms, ambil yang paling cepet):
+
+| bench | EnderScript | C | C++ | Zig |
+|---|---|---|---|---|
+| gcd | 691.3 | 391.0 | 395.3 | 352.5 |
+| collatz | 669.2 | 319.3 | 315.5 | 348.3 |
+| matrix | 280.3 | 61.9 | 58.8 | 90.8 |
+
+windows x64 (ms, ambil yang paling cepet, python cuma sekali jalan):
+
+| bench | EnderScript | C | C++ | Rust | Zig | Python |
+|---|---|---|---|---|---|---|
+| gcd | 436.7 | 330.7 | 330.6 | 310.6 | 254.6 | 22900 |
+| collatz | 445.6 | 315.7 | 316.9 | 306.9 | 287.2 | 31100 |
+| matrix | 238.8 | 58.3 | 57.6 | 59.6 | 56.7 | 39000 |
+
+di sini EnderScript 1.3 sampe 4.5 kali lebih lambat dari C. codegen umum (alokasi register, pemilihan instruksi, index array di loop nested) itu yang bakal dibenerin berikutnya.
+
+bench yang kena optimasi khusus:
 
 hasil bench di windows 32-bit (ms, ambil yang paling cepet, output semua bahasa sama persis):
 
@@ -842,6 +898,34 @@ EnderScript はインタプリタ、VM、ガベージコレクタ、大きなラ
 
 ARM64 は現在基本的な最適化のみのため、ARM64 のプログラムは x86 や x64 より遅くなります。
 
+### 正直な数字
+
+以下のベンチマークで EnderScript が勝っているのは、コンパイラがまさにそのループパターン (配列の埋め込み、sieve、カウント、LCG、出力/入力ループ) 専用の最適化を持っているためです。一般的なコードでは、EnderScript はまだ C、C++、Rust、Zig より明らかに遅いです。次の 3 つのプログラムは一切チューニングしていません:
+
+- `gcd`: 1 から 3000 までのすべての組に対するユークリッドの互除法
+- `collatz`: 1 から 100000 までのコラッツの手順数を 20 回
+- `matrix`: 配列上の多重ループによる 200x200 の整数行列積を 30 回
+
+Windows 32-bit (ms、最速の実行):
+
+| ベンチマーク | EnderScript | C | C++ | Zig |
+|---|---|---|---|---|
+| gcd | 691.3 | 391.0 | 395.3 | 352.5 |
+| collatz | 669.2 | 319.3 | 315.5 | 348.3 |
+| matrix | 280.3 | 61.9 | 58.8 | 90.8 |
+
+Windows x64 (ms、最速の実行、Python は 1 回のみ計測):
+
+| ベンチマーク | EnderScript | C | C++ | Rust | Zig | Python |
+|---|---|---|---|---|---|---|
+| gcd | 436.7 | 330.7 | 330.6 | 310.6 | 254.6 | 22900 |
+| collatz | 445.6 | 315.7 | 316.9 | 306.9 | 287.2 | 31100 |
+| matrix | 238.8 | 58.3 | 57.6 | 59.6 | 56.7 | 39000 |
+
+ここでは EnderScript は C より 1.3 倍から 4.5 倍遅くなります。一般的なコード生成 (レジスタ割り当て、命令選択、多重ループでの配列インデックス) が次の改善対象です。
+
+専用の最適化が効くベンチマーク:
+
 Windows 32-bit でのベンチマーク結果 (ms、最速の実行、すべての言語で出力は完全に同じ):
 
 | ベンチマーク | EnderScript | C | C++ | Zig |
@@ -1245,6 +1329,34 @@ EnderScript 直接编译为机器码，没有解释器、虚拟机、垃圾回�
 | 用公式直接计算的循环 | - | 有 | - |
 
 ARM64 目前只有基本优化，因此 ARM64 程序比 x86 和 x64 慢。
+
+### 真实的数字
+
+EnderScript 在下面的基准测试中领先，是因为编译器专门为这些循环模式 (数组填充、sieve、计数、LCG、输出/输入循环) 做了优化。对于普通代码，EnderScript 仍明显慢于 C、C++、Rust 和 Zig。下面三个程序从未针对性调优:
+
+- `gcd`: 对 1 到 3000 的所有数对使用欧几里得算法
+- `collatz`: 计算 1 到 100000 的考拉兹步数，重复 20 次
+- `matrix`: 用数组上的多重循环做 200x200 整数矩阵乘法，重复 30 次
+
+Windows 32-bit (ms，取最快一次):
+
+| 基准测试 | EnderScript | C | C++ | Zig |
+|---|---|---|---|---|
+| gcd | 691.3 | 391.0 | 395.3 | 352.5 |
+| collatz | 669.2 | 319.3 | 315.5 | 348.3 |
+| matrix | 280.3 | 61.9 | 58.8 | 90.8 |
+
+Windows x64 (ms，取最快一次，Python 只运行一次):
+
+| 基准测试 | EnderScript | C | C++ | Rust | Zig | Python |
+|---|---|---|---|---|---|---|
+| gcd | 436.7 | 330.7 | 330.6 | 310.6 | 254.6 | 22900 |
+| collatz | 445.6 | 315.7 | 316.9 | 306.9 | 287.2 | 31100 |
+| matrix | 238.8 | 58.3 | 57.6 | 59.6 | 56.7 | 39000 |
+
+这里 EnderScript 比 C 慢 1.3 到 4.5 倍。通用代码生成 (寄存器分配、指令选择、多重循环中的数组下标) 是下一步要改进的部分。
+
+专用优化生效的基准测试:
 
 Windows 32-bit 上的基准测试结果 (ms，取最快一次，所有语言的输出完全相同):
 
